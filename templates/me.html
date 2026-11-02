@@ -1,0 +1,96 @@
+{% extends "_base.html" %}
+{% set active = "me" %}
+{% block title %}我的偏好 · Scout{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>我的 <span>偏好</span></h1>
+  <p>这里管的是「跟你这个员工绑定」的个人设置。全局 SMTP / API Key 在 admin 的 <a href="/settings" style="color:var(--accent);">/settings</a> 里改，跟这里互不影响。</p>
+</div>
+
+<div class="card">
+  <div class="card-header"><div class="h-badge">1</div><h2>账号</h2></div>
+  <div class="settings-grid">
+    <label>用户名 <input type="text" id="meUsername" readonly></label>
+    <label>显示名 <input type="text" id="meDisplay" readonly></label>
+    <label>邮箱 <input type="text" id="meEmail" readonly></label>
+    <label>角色 <input type="text" id="meRole" readonly></label>
+  </div>
+  <div style="margin-top:12px;">
+    <a href="/change_password" class="btn btn-ghost btn-sm">修改登录密码 →</a>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header"><div class="h-badge">2</div><h2>我的回信邮箱</h2></div>
+  <p style="color:var(--text2); font-size:12px; margin-bottom:12px;">
+    群发邮件时所有员工共用一个发件箱（<code id="globalFromHint" style="color:var(--text);">—</code>）。但客户点"回复"会按下面填的邮箱进 —— 也就是说，你发的客户回信会进你自己邮箱。
+    <br>留空就回到默认 From。改完点保存立刻生效。
+  </p>
+  <div class="settings-grid">
+    <label>我的回信邮箱
+      <input type="email" id="replyToInput" placeholder="例：summerlily@mycraftzone.com">
+    </label>
+  </div>
+  <div class="btn-row">
+    <button class="btn btn-accent btn-sm" id="saveReplyToBtn" onclick="saveReplyTo()">保存</button>
+    <span id="replyToMsg" style="font-size:12px; color:var(--text2);"></span>
+  </div>
+</div>
+
+<style>
+.settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.settings-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text2); }
+.settings-grid input { width: 100%; }
+.settings-grid input[readonly] { background: var(--surface2); color: var(--text2); cursor: default; }
+@media (max-width: 720px) { .settings-grid { grid-template-columns: 1fr; } }
+</style>
+
+<script>
+async function loadMe() {
+  const r = await fetch('/api/auth/me');
+  const d = await r.json();
+  const u = d.user || {};
+  document.getElementById('meUsername').value = u.username || '';
+  document.getElementById('meDisplay').value  = u.display_name || '';
+  document.getElementById('meEmail').value    = u.email || '';
+  document.getElementById('meRole').value     = u.role || '';
+  document.getElementById('replyToInput').value = u.reply_to_email || '';
+  // Show global From as a hint
+  try {
+    const r2 = await fetch('/api/auth/global_from');
+    const d2 = await r2.json();
+    document.getElementById('globalFromHint').textContent = d2.from_email || '—';
+  } catch (e) {}
+}
+
+async function saveReplyTo() {
+  const inp = document.getElementById('replyToInput');
+  const msg = document.getElementById('replyToMsg');
+  const btn = document.getElementById('saveReplyToBtn');
+  btn.disabled = true;
+  msg.textContent = '保存中…';
+  try {
+    const r = await fetch('/api/auth/preferences', {
+      method: 'PATCH', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({reply_to_email: (inp.value || '').trim()}),
+    });
+    const d = await r.json();
+    if (!r.ok) {
+      msg.style.color = 'var(--red)';
+      msg.textContent = '失败：' + (d.detail || d.error || '');
+      return;
+    }
+    msg.style.color = 'var(--green)';
+    msg.textContent = inp.value ? '✓ 已保存：客户回信将进 ' + inp.value : '✓ 已清空：回信将进默认 From';
+    setTimeout(() => { msg.textContent = ''; msg.style.color = 'var(--text2)'; }, 4000);
+  } catch (e) {
+    msg.style.color = 'var(--red)';
+    msg.textContent = '失败：' + e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+loadMe();
+</script>
+{% endblock %}

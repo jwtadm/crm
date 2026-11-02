@@ -1,0 +1,58 @@
+# COVERAGE: /query page → ai.generate_search_queries → platform search_users → ingest; INTRODUCED: pre-d7c8577
+# ============================================================================
+#  这条覆盖 /query 这条 AI 搜索流水线：
+#    1. 用户填画像描述 → POST /api/query/run
+#    2. 后端调 ai.generate_search_queries（dev 桩返回 8 个固定关键词）
+#    3. 后端对每个 (platform, keyword) 调 search_users（dev 桩各返回 2-3 个候选）
+#    4. ingest.run() 去重 + hydrate + 入库
+#    5. UI 显示 queries chips + 候选/新增/已在库 stats + 新账号列表
+# ============================================================================
+
+goto http://localhost:5001/login
+wait_for input#username
+hover input#username
+type input#username "admin"
+hover input#password
+type input#password "admin12345"
+hover button#loginBtn
+click button#loginBtn
+wait_url /similarity
+goto http://localhost:5001/query
+wait_for "#descInput"
+wait_ms 800
+
+eval "(()=>{ if(!document.getElementById('__cap')){ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; } window.__cap('① /query 页：填画像描述，点开始 → AI 想搜索词 → 跨平台搜索 → 入库'); })()"
+wait_ms 3000
+
+hover "#descInput"
+click "#descInput"
+type "#descInput" "indie plushie + sticker artists, US/JP"
+wait_ms 800
+# 限制 count 让 dev 跑得快一点
+hover "#countInput"
+click "#countInput"
+press "#countInput" Control+a
+press "#countInput" Backspace
+type "#countInput" "10"
+wait_ms 500
+
+eval "window.__cap('② 点「开始」→ 后端走 generate_search_queries → search_users → ingest')"
+wait_ms 2000
+
+hover "#runBtn"
+click "#runBtn"
+# 跑完会显示 #resultsCard
+wait_for "#resultsCard:not(.hidden)"
+wait_ms 1500
+
+eval "window.__cap('③ 检查搜索结果：queries 多个 chip + 新增账号至少 1 个 + 命名规则 rrwebfx_qig_*/qtk_*/qx_* 对得上')"
+wait_ms 3000
+
+# AI 桩固定返回 8 个 query，所以 chip-row 应该有 >= 1 个 chip
+assert_visible "#queriesBox .chip-row"
+# 新发现的账号列表里至少有 1 个 rrwebfx_q* —— 桩出来的搜索候选
+wait_text "rrwebfx_q"
+assert_text "rrwebfx_q"
+
+eval "window.__cap('✅ 通过：AI 搜索词 → 跨平台搜索 → 入库 一条龙打通')"
+wait_ms 3500

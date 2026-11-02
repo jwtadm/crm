@@ -1,0 +1,490 @@
+{% extends "_base.html" %}
+{% set active = "similarity" %}
+{% block title %}相似发现 · Scout{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>相似 <span>发现</span></h1>
+  <p>从数据库挑种子账号 → 调用各平台的"相似用户"接口 → 自动去重并入库新账号。</p>
+</div>
+
+<div class="card" id="bulkCard" style="border:1px dashed var(--accent);">
+  <div class="card-header"><div class="h-badge">⚡</div><h2>一键全量找相似</h2></div>
+  <p style="color:var(--text2); margin:4px 0 12px;">用所有现有客户做种子，跑一遍相似发现。串行执行、任何时刻只能跑一个、断电可续。</p>
+  <div id="bulkLauncher">
+    <button class="btn btn-accent" id="bulkBtn" onclick="openBulkModal()">🌐 全量找相似</button>
+    <span id="bulkActiveHint" style="margin-left:12px; color:var(--text2); font-size:12px;"></span>
+  </div>
+  <div id="bulkProgress" class="hidden" style="margin-top:8px;">
+    <div class="stats-bar" id="bulkStats"></div>
+    <div style="margin:8px 0 6px; font-size:13px; color:var(--text2);">
+      <span id="bulkCursor">0 / 0</span> 种子 · 状态：<b id="bulkStatus">running</b>
+      <span id="bulkSpin" class="spinner" style="display:inline-block; vertical-align:middle; margin-left:6px;"></span>
+    </div>
+    <div style="background:var(--surface2); border-radius:6px; height:6px; overflow:hidden; margin:8px 0;">
+      <div id="bulkBar" style="height:100%; width:0%; background:var(--accent); transition:width .4s;"></div>
+    </div>
+    <div id="bulkTail" style="font-size:11px; color:var(--text2); margin-top:6px; max-height:120px; overflow:auto;"></div>
+    <div class="input-row" style="margin-top:10px; gap:8px;">
+      <button class="btn btn-accent btn-sm hidden" id="bulkResumeBtn" onclick="resumeBulk()">↻ 续跑</button>
+      <button class="btn btn-ghost btn-sm hidden" id="bulkCancelBtn" onclick="cancelBulk()">🚫 放弃此任务</button>
+      <button class="btn btn-ghost btn-sm" onclick="dismissBulk()">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- 估算确认弹窗 -->
+<div id="bulkModal" class="hidden" style="position:fixed; inset:0; z-index:9000; background:rgba(0,0,0,.5); display:flex; align-items:center; justify-content:center;">
+  <div style="background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:22px; width:min(520px, 92vw); max-height:88vh; overflow:auto;">
+    <h3 style="margin:0 0 14px;">确认开跑：全量找相似</h3>
+    <div id="bulkEstimate" style="font-size:13px; line-height:1.6;">加载中…</div>
+    <div style="margin-top:14px; font-size:12px; color:var(--text2);">客户状态范围（不勾＝不按状态过滤）</div>
+    <div class="input-row" id="bulkStatuses" style="gap:10px; flex-wrap:wrap; margin-top:6px;"></div>
+    <div class="input-row" style="margin-top:18px; gap:8px; justify-content:flex-end;">
+      <button class="btn btn-ghost btn-sm" onclick="closeBulkModal()">取消</button>
+      <button class="btn btn-accent" id="bulkConfirmBtn" onclick="startBulk()">确认开跑</button>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header"><div class="h-badge">1</div><h2>挑选种子账号（点"搜索/排序"才生效）</h2></div>
+  <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+    <label style="display:flex; flex-direction:column; gap:4px; font-size:12px; color:var(--text2);">
+      文字过滤（精确包含 — 昵称/简介/分类）
+      <input type="text" id="textFilter" placeholder="例：plushie, illustrator, vegan">
+    </label>
+    <label style="display:flex; flex-direction:column; gap:4px; font-size:12px; color:var(--text2);">
+      语义画像（按描述用 embedding 排序，不限于精确字面匹配）
+      <input type="text" id="descInput" placeholder="例：非传统艺术，色彩浓烈，独立创作者">
+    </label>
+  </div>
+  <div class="input-row" style="margin-top:10px; gap:14px;">
+    <label class="platform-filter"><input type="checkbox" class="plat-cb" value="instagram" checked> Instagram</label>
+    <label class="platform-filter"><input type="checkbox" class="plat-cb" value="tiktok" checked> TikTok</label>
+    <label class="platform-filter platform-x" style="opacity:.5;" title="X 平台没有相似用户接口"><input type="checkbox" class="plat-cb" value="x" disabled> X（不支持）</label>
+    <span style="margin-left:auto;"></span>
+    <button class="btn btn-accent btn-sm" onclick="loadList()">🔍 搜索 / 排序</button>
+    <button class="btn btn-ghost btn-sm" onclick="resetFilter()">重置</button>
+  </div>
+  <div class="input-row" style="margin-top:8px; gap:10px; font-size:12px; color:var(--text2); align-items:center; flex-wrap:wrap;">
+    <span style="white-space:nowrap;">客户状态：</span>
+    <label class="status-filter"><input type="checkbox" class="status-cb" value="待联系"> 待联系</label>
+    <label class="status-filter"><input type="checkbox" class="status-cb" value="已联系"> 已联系</label>
+    <label class="status-filter"><input type="checkbox" class="status-cb" value="已回复"> 已回复</label>
+    <label class="status-filter"><input type="checkbox" class="status-cb" value="已成交"> 已成交</label>
+    <label class="status-filter"><input type="checkbox" class="status-cb" value="主动来找"> 主动来找</label>
+    <label class="status-filter"><input type="checkbox" class="status-cb" value="已放弃"> 已放弃</label>
+    <span style="color:var(--text2); opacity:.7;">（不勾 = 不按状态过滤；勾上"已成交"就能只看成交客户名下的账号当种子）</span>
+  </div>
+  <div id="dbList" class="list" style="margin-top:12px;"><div class="empty">加载中…</div></div>
+</div>
+
+<div class="card">
+  <div class="card-header"><div class="h-badge">2</div><h2>开始相似发现</h2></div>
+  <div class="input-row">
+    <label>需要发现的新账号数量：</label>
+    <input type="number" id="countInput" value="20" min="1" max="200">
+    <span style="margin-left:auto;"></span>
+    <button class="btn btn-accent" id="runBtn" onclick="runSimilarity()">开始</button>
+    <span id="selCount" style="color:var(--text2); font-size:12px;">已选 0 个种子</span>
+  </div>
+  <div class="loading" id="runLoading"><div class="spinner"></div><span id="runStatus">运行中…</span></div>
+</div>
+
+<div class="card hidden" id="resultsCard">
+  <div class="card-header"><div class="h-badge">3</div><h2>新发现</h2></div>
+  <div class="stats-bar" id="resultStats"></div>
+  <div id="results"></div>
+  <div id="errBox"></div>
+</div>
+
+<div class="card" style="text-align:center; background: transparent; border: 1px dashed var(--border);">
+  <details>
+    <summary style="cursor:pointer; color: var(--text2); font-size:12px;">数据库为空？用已知用户名导入种子</summary>
+    <div class="input-row" style="margin-top:12px; justify-content:center;">
+      <select id="bootPlatform" style="padding:9px; background:var(--surface2); border:1px solid var(--border); color:var(--text); border-radius:8px; font-size:13px;">
+        <option value="instagram">Instagram</option>
+        <option value="tiktok">TikTok</option>
+        <option value="x">X (Twitter)</option>
+      </select>
+      <input type="text" id="bootHandle" placeholder="用户名（不带 @）" style="width:200px;">
+      <button class="btn btn-ghost btn-sm" onclick="bootImport()">导入</button>
+    </div>
+  </details>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let allAccounts = [];
+let selected = new Set();
+
+function resetFilter() {
+  document.getElementById('textFilter').value = '';
+  document.getElementById('descInput').value = '';
+  document.querySelectorAll('.status-cb').forEach(cb => { cb.checked = false; });
+  loadList();
+}
+
+async function loadList() {
+  const text = document.getElementById('textFilter').value.trim();
+  const desc = document.getElementById('descInput').value.trim();
+  const plats = [...document.querySelectorAll('.plat-cb:checked')].map(cb => cb.value);
+  const statuses = [...document.querySelectorAll('.status-cb:checked')].map(cb => cb.value);
+  const params = new URLSearchParams();
+  if (text) params.set('text', text);
+  if (desc) params.set('description', desc);
+  if (plats.length) params.set('platforms', plats.join(','));
+  if (statuses.length) params.set('statuses', statuses.join(','));
+  document.getElementById('dbList').innerHTML = '<div class="empty">加载中…</div>';
+  try {
+    const r = await fetch('/api/db/list?' + params.toString());
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    allAccounts = d.accounts || [];
+    renderList();
+  } catch (e) {
+    document.getElementById('dbList').innerHTML = `<div class="error-msg">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function renderList() {
+  const showScore = !!document.getElementById('descInput').value.trim();
+  if (!allAccounts.length) {
+    document.getElementById('dbList').innerHTML = '<div class="empty">数据库为空。先用下方导入入口添加种子，或者去 Query 搜索页面跑一次。</div>';
+    return;
+  }
+  document.getElementById('dbList').innerHTML = allAccounts
+    .map(a => renderAccount(a, {checkbox: true, showScore}))
+    .join('');
+  document.querySelectorAll('.select-cb').forEach(cb => {
+    cb.checked = selected.has(+cb.dataset.id);
+    cb.addEventListener('change', e => {
+      const id = +e.target.dataset.id;
+      if (e.target.checked) selected.add(id);
+      else selected.delete(id);
+      e.target.closest('.result-item').classList.toggle('selected', e.target.checked);
+      updateSelCount();
+    });
+    if (cb.checked) cb.closest('.result-item').classList.add('selected');
+  });
+  document.querySelectorAll('#dbList .result-item').forEach(it => {
+    it.addEventListener('click', e => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'A') return;
+      const cb = it.querySelector('.select-cb');
+      cb.checked = !cb.checked;
+      cb.dispatchEvent(new Event('change'));
+    });
+  });
+  updateSelCount();
+}
+function updateSelCount() {
+  document.getElementById('selCount').textContent = `已选 ${selected.size} 个种子`;
+}
+
+async function runSimilarity() {
+  const ids = [...selected];
+  if (!ids.length) return alert('请至少选择一个种子账号');
+  const count = +document.getElementById('countInput').value || 20;
+  document.getElementById('runBtn').disabled = true;
+  document.getElementById('runLoading').classList.add('active');
+  document.getElementById('runStatus').textContent = '正在抓取相似账号 + 拉取详情…';
+  try {
+    const r = await fetch('/api/similarity/run', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({seed_account_ids: ids, count}),
+    });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    showResults(d);
+    refreshNavStats();
+    // Don't reload the seed list — Sir wants to keep the current selection visible.
+    // 新发现的账号会显示在下方"新发现"卡片里；要把它们当下一轮种子，手动点 🔍 搜索/排序 刷新即可。
+  } catch (e) {
+    alert('运行失败：' + e.message);
+  } finally {
+    document.getElementById('runBtn').disabled = false;
+    document.getElementById('runLoading').classList.remove('active');
+  }
+}
+
+function showResults(d) {
+  document.getElementById('resultsCard').classList.remove('hidden');
+  const stats = `
+    <div class="stat">候选：<span class="num">${d.considered}</span></div>
+    <div class="stat">新增：<span class="num">${(d.new_accounts||[]).length}</span></div>
+    <div class="stat">跨平台：<span class="num">${(d.cross_platform||[]).length}</span></div>
+    <div class="stat">已在库：<span class="num">${d.skipped_pre||0}</span></div>
+    <div class="stat">同人去重：<span class="num">${d.skipped_email||0}</span></div>`;
+  document.getElementById('resultStats').innerHTML = stats;
+  let html = '';
+  if ((d.new_accounts||[]).length) {
+    html += '<h3 style="font-size:13px; margin: 6px 0 8px; color: var(--text2);">新账号</h3>';
+    html += d.new_accounts.map(a => renderAccount(a)).join('');
+  }
+  if ((d.cross_platform||[]).length) {
+    html += '<h3 style="font-size:13px; margin: 12px 0 8px; color: var(--text2);">邮箱命中已知客户</h3>';
+    html += d.cross_platform.map(x => {
+      const others = (x.other_accounts||[]).map(o => `${o.platform}:@${escapeHtml(o.username)}`).join('，');
+      const personLabel = x.person_full_name
+        ? `「${escapeHtml(x.person_full_name)}」`
+        : `(person id=${x.person_id})`;
+      const statusBit = x.person_status ? `[${escapeHtml(x.person_status)}] ` : '';
+      const tail = others
+        ? `↳ 邮箱命中已有客户 ${statusBit}${personLabel}，该客户其它平台账号：${others}`
+        : `↳ 邮箱命中已有客户 ${statusBit}${personLabel}，原本只有邮箱无平台账号，现在补上了`;
+      return renderAccount(x.account) + `<div style="font-size:11px; color:var(--text2); margin: -4px 0 8px 12px;">${tail}</div>`;
+    }).join('');
+  }
+  if (!html) html = '<div class="empty">没有新账号（候选都已在数据库里了）。</div>';
+  document.getElementById('results').innerHTML = html;
+  const allErrs = [...(d.seed_errors||[]), ...(d.hydrate_errors||[])];
+  document.getElementById('errBox').innerHTML = allErrs.length
+    ? allErrs.map(e => `<div class="error-msg">${escapeHtml(e.seed||e.username||'?')}（${escapeHtml(e.platform||'')}）→ ${escapeHtml(e.error)}</div>`).join('')
+    : '';
+}
+
+async function bootImport() {
+  const platform = document.getElementById('bootPlatform').value;
+  const handle = document.getElementById('bootHandle').value.trim();
+  if (!handle) return;
+  try {
+    const r = await fetch('/api/db/import_handle', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({platform, handle}),
+    });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    document.getElementById('bootHandle').value = '';
+    refreshNavStats();
+    loadList();
+  } catch (e) { alert('导入失败：' + e.message); }
+}
+
+// Platform checkboxes still trigger immediately (no extra cost); only text/desc filter requires explicit button.
+document.querySelectorAll('.plat-cb').forEach(cb => cb.addEventListener('change', loadList));
+document.querySelectorAll('.status-cb').forEach(cb => cb.addEventListener('change', loadList));
+
+// Pressing Enter in either filter input triggers search
+for (const id of ['textFilter', 'descInput']) {
+  document.getElementById(id).addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); loadList(); }
+  });
+}
+
+loadList();
+
+// ============================================================
+// Bulk similarity ("一键全量找相似")
+// ============================================================
+const BULK_DEFAULT_STATUSES = ["已成交", "已回复", "已联系"];
+const BULK_ALL_STATUSES = ["待联系","已联系","已回复","已成交","主动来找","已放弃","不适合"];
+let bulkPollTimer = null;
+let bulkActiveJobId = null;
+
+function bulkSetLauncher(visible) {
+  document.getElementById('bulkLauncher').classList.toggle('hidden', !visible);
+  document.getElementById('bulkProgress').classList.toggle('hidden', visible);
+}
+
+async function loadBulkActive() {
+  try {
+    const r = await fetch('/api/similarity/bulk/active');
+    const d = await r.json();
+    if (d.job) {
+      bulkActiveJobId = d.job.id;
+      bulkSetLauncher(false);
+      renderBulkJob(d.job);
+      if (d.job.status === 'running') startBulkPoll();
+      // Auto-revive a job the watchdog/circuit-breaker parked as 'interrupted'
+      // (e.g. TikHub ran out of credit mid-run). Opening/refreshing the page
+      // resumes it from the exact seed it stopped at — no manual click needed.
+      else if (d.job.status === 'interrupted') resumeBulk();
+    } else {
+      bulkSetLauncher(true);
+      document.getElementById('bulkActiveHint').textContent = '';
+    }
+  } catch (e) {
+    // Page still works without this — silent
+  }
+}
+
+async function openBulkModal() {
+  document.getElementById('bulkModal').classList.remove('hidden');
+  // render status checkboxes (default-checked are BULK_DEFAULT_STATUSES)
+  const box = document.getElementById('bulkStatuses');
+  box.innerHTML = BULK_ALL_STATUSES.map(s => `
+    <label class="status-filter">
+      <input type="checkbox" class="bulk-status-cb" value="${escapeHtml(s)}"
+             ${BULK_DEFAULT_STATUSES.includes(s) ? 'checked' : ''}> ${escapeHtml(s)}
+    </label>`).join('');
+  document.querySelectorAll('.bulk-status-cb').forEach(cb =>
+    cb.addEventListener('change', refreshBulkEstimate));
+  await refreshBulkEstimate();
+}
+
+function closeBulkModal() {
+  document.getElementById('bulkModal').classList.add('hidden');
+}
+
+function currentBulkStatuses() {
+  return [...document.querySelectorAll('.bulk-status-cb:checked')].map(cb => cb.value);
+}
+
+async function refreshBulkEstimate() {
+  const box = document.getElementById('bulkEstimate');
+  box.textContent = '估算中…';
+  const statuses = currentBulkStatuses();
+  const qs = new URLSearchParams();
+  qs.set('statuses', statuses.join(','));   // empty string = no filter
+  try {
+    const r = await fetch('/api/similarity/bulk/estimate?' + qs.toString());
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    const platLine = Object.entries(d.by_platform || {})
+      .map(([k,v]) => `${escapeHtml(k)}:${v}`).join('，') || '—';
+    const bal = (d.tikhub_balance_usd == null) ? '未知' : `$${d.tikhub_balance_usd.toFixed(4)}`;
+    const activeBit = d.active_job
+      ? `<div style="color:#d97706; margin-top:8px;">⚠️ 当前已有任务 <code>${escapeHtml(d.active_job.id)}</code>（${escapeHtml(d.active_job.status)}），不能再起一个。</div>`
+      : '';
+    box.innerHTML = `
+      <div>种子数：<b>${d.seeds}</b>（${platLine}）</div>
+      <div>预估上限：<b>$${(d.upper_cost_usd ?? 0).toFixed(2)}</b>（含 fetch_similar + 全量 hydrate；实际通常少 30–50%）</div>
+      <div>TikHub 余额：<b>${bal}</b></div>
+      ${activeBit}`;
+    document.getElementById('bulkConfirmBtn').disabled = (d.seeds === 0) || !!d.active_job;
+  } catch (e) {
+    box.innerHTML = `<div class="error-msg">估算失败：${escapeHtml(e.message)}</div>`;
+    document.getElementById('bulkConfirmBtn').disabled = true;
+  }
+}
+
+async function startBulk() {
+  const statuses = currentBulkStatuses();
+  const body = (statuses.length === BULK_ALL_STATUSES.length)
+    ? {statuses: null}                        // all checked → no filter
+    : (statuses.length === 0 ? {statuses: []} // none checked → user explicitly wants no filter
+                             : {statuses});
+  document.getElementById('bulkConfirmBtn').disabled = true;
+  try {
+    const r = await fetch('/api/similarity/bulk/start', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    if (!r.ok) {
+      if (r.status === 409 && d.job_id) {
+        // Race: another job snuck in. Pivot UI to that job.
+        closeBulkModal();
+        bulkActiveJobId = d.job_id;
+        bulkSetLauncher(false);
+        await pollBulkOnce();
+        return;
+      }
+      throw new Error(d.detail || d.error || `HTTP ${r.status}`);
+    }
+    closeBulkModal();
+    bulkActiveJobId = d.job_id;
+    bulkSetLauncher(false);
+    startBulkPoll();
+  } catch (e) {
+    alert('启动失败：' + e.message);
+    document.getElementById('bulkConfirmBtn').disabled = false;
+  }
+}
+
+async function pollBulkOnce() {
+  if (!bulkActiveJobId) return;
+  try {
+    const r = await fetch(`/api/similarity/bulk/${bulkActiveJobId}`);
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    renderBulkJob(d);
+    if (d.status !== 'running') stopBulkPoll();
+    if (d.status === 'done') refreshNavStats();
+  } catch (e) {
+    stopBulkPoll();
+    document.getElementById('bulkStatus').textContent = 'error: ' + e.message;
+  }
+}
+
+function startBulkPoll() {
+  stopBulkPoll();
+  pollBulkOnce();
+  bulkPollTimer = setInterval(pollBulkOnce, 2000);
+}
+
+function stopBulkPoll() {
+  if (bulkPollTimer) { clearInterval(bulkPollTimer); bulkPollTimer = null; }
+}
+
+function renderBulkJob(job) {
+  const p = job.progress || {};
+  document.getElementById('bulkStats').innerHTML = `
+    <div class="stat">考察：<span class="num">${p.considered || 0}</span></div>
+    <div class="stat">新增：<span class="num">${p.new || 0}</span></div>
+    <div class="stat">跨平台：<span class="num">${p.cross_platform || 0}</span></div>
+    <div class="stat">已在库：<span class="num">${p.skipped_pre || 0}</span></div>
+    <div class="stat">同人去重：<span class="num">${p.skipped_email || 0}</span></div>
+    <div class="stat" title="LLM ICP 过滤（/settings 里能改 prompt + 开关）">LLM 滤掉：<span class="num">${p.llm_filtered || 0}</span></div>
+    <div class="stat">出错：<span class="num">${(p.seed_errors || 0) + (p.hydrate_errors || 0)}</span></div>`;
+  const total = job.seed_total || 0;
+  const cur = job.cursor || 0;
+  document.getElementById('bulkCursor').textContent = `${cur} / ${total}`;
+  document.getElementById('bulkStatus').textContent = job.status;
+  document.getElementById('bulkBar').style.width = total ? Math.round(100 * cur / total) + '%' : '0%';
+  document.getElementById('bulkSpin').style.display = (job.status === 'running') ? 'inline-block' : 'none';
+  document.getElementById('bulkResumeBtn').classList.toggle('hidden', job.status !== 'interrupted');
+  document.getElementById('bulkCancelBtn').classList.toggle('hidden', job.status !== 'interrupted');
+  // last 8 seed results
+  const tail = (job.per_seed || []).slice(-8).reverse();
+  document.getElementById('bulkTail').innerHTML = tail.map(e => {
+    const tag = e.error ? `<span style="color:#dc2626;">err: ${escapeHtml(e.error)}</span>`
+                        : `new=${e.new}/${e.considered}`;
+    return `<div>· #${e.idx+1} @${escapeHtml(e.username)} (${escapeHtml(e.platform)}) — ${tag} · ${e.duration_ms}ms</div>`;
+  }).join('') || '<div style="opacity:.6;">尚无完成的种子</div>';
+}
+
+async function resumeBulk() {
+  if (!bulkActiveJobId) return;
+  document.getElementById('bulkResumeBtn').disabled = true;
+  try {
+    const r = await fetch(`/api/similarity/bulk/${bulkActiveJobId}/resume`, {method:'POST'});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || d.error || `HTTP ${r.status}`);
+    startBulkPoll();
+  } catch (e) {
+    alert('续跑失败：' + e.message);
+  } finally {
+    document.getElementById('bulkResumeBtn').disabled = false;
+  }
+}
+
+async function cancelBulk() {
+  if (!bulkActiveJobId) return;
+  if (!confirm('确定放弃此任务？已入库的新客户会保留，但此任务不可再续跑。')) return;
+  document.getElementById('bulkCancelBtn').disabled = true;
+  try {
+    const r = await fetch(`/api/similarity/bulk/${bulkActiveJobId}/cancel`, {method:'POST'});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || d.error || `HTTP ${r.status}`);
+    stopBulkPoll();
+    bulkActiveJobId = null;
+    bulkSetLauncher(true);
+  } catch (e) {
+    alert('放弃失败：' + e.message);
+  } finally {
+    document.getElementById('bulkCancelBtn').disabled = false;
+  }
+}
+
+function dismissBulk() {
+  stopBulkPoll();
+  bulkActiveJobId = null;
+  bulkSetLauncher(true);
+  loadBulkActive(); // re-check in case another tab has a job
+}
+
+loadBulkActive();
+</script>
+{% endblock %}

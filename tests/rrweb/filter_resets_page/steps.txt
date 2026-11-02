@@ -1,0 +1,57 @@
+# COVERAGE: /people 切 status/owner/sort 等过滤项后，页号自动重置回 0; INTRODUCED: 2026-06-03
+# ============================================================================
+#  客户反馈：从「待联系」切到「已联系」时，表格停留在 "1701-61 / 共 61 人"，
+#  显示「没有匹配的客户」。原因是 statusSel.onchange = loadList() 直接走，
+#  没碰 _offset，于是上一页的 offset 还在。
+#
+#  修：所有 6 个 filter 元素的 onchange 改走 reloadFiltered()（_offset = 0
+#  + loadList()）。本测试模拟「用户翻到深页」用 eval 把 _offset 抬到 200，
+#  再切 status，断言 _offset 归零 + 表格出现 已联系 行。
+# ============================================================================
+
+goto http://localhost:5001/login
+wait_for input#username
+type input#username "admin"
+type input#password "admin12345"
+click button#loginBtn
+wait_url /similarity
+wait_ms 1500
+
+eval "(()=>{ if(!document.getElementById('__cap')){ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; } window.__cap('① /people 默认看到 6 条 RRWebFx fixture（4 待联系 + 2 已联系）'); })()"
+wait_ms 2500
+
+goto http://localhost:5001/people
+wait_for ".crm-table tbody tr"
+wait_ms 1500
+
+# 先把视图过滤到只看 RRWebFx fixture，避免被无关数据干扰
+hover "#qInput"
+click "#qInput"
+type "#qInput" "RRWebFx Filter Reset"
+wait_ms 1500
+assert_count ".crm-table tbody tr" 6
+
+eval "(()=>{ if(!document.getElementById('__cap')){ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; } window.__cap('② 模拟翻到深页：连点 nextPage() 两次，offset → 200'); })()"
+wait_ms 2500
+
+# _offset 是 IIFE 闭包变量，外部 eval 设 window._offset 没用；通过暴露的
+# nextPage() 函数推进 offset（它做 _offset += PAGE_SIZE; loadList()）
+eval "nextPage(); nextPage()"
+wait_ms 1500
+
+# 验 offset 确实抬上去了（指示器形如 "201-6 / 共 6 人"，end < start = 视觉异常）
+assert_text "201-"
+
+eval "(()=>{ if(!document.getElementById('__cap')){ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; } window.__cap('③ 切「状态 = 已联系」→ 修了后页号回 1，表格出现 2 条'); })()"
+wait_ms 2500
+
+select "#statusSel" "已联系"
+wait_ms 1500
+
+# 修了之后应当看到 2 条 + 页号回到 1
+assert_count ".crm-table tbody tr" 2
+assert_text "RRWebFx Filter Reset Contacted"
+assert_text "1-2 / 共 2 人"
+
+eval "(()=>{ if(!document.getElementById('__cap')){ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; } window.__cap('✅ 通过：filter 切换后页号自动归零'); })()"
+wait_ms 3500

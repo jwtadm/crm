@@ -1,0 +1,65 @@
+# COVERAGE: POST /api/people/<id>/reject + unreject + 显示已拒绝 filter; INTRODUCED: pre-d7c8577
+# ============================================================================
+#  Reject 把人标为 status="不适合"，默认列表隐藏；勾上「显示已拒绝」复选框可看
+#  到，再点「取消标记」即 unreject。reject 也会顺手把名下平台账号标
+#  is_rejected=1，做为相似搜索时的负样本池子。
+# ============================================================================
+
+goto http://localhost:5001/login
+wait_for input#username
+hover input#username
+type input#username "admin"
+hover input#password
+type input#password "admin12345"
+hover button#loginBtn
+click button#loginBtn
+wait_url /similarity
+goto http://localhost:5001/people
+wait_for ".crm-table tbody tr"
+wait_ms 800
+
+eval "(()=>{ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; window.__cap('① 测试桩：把 prompt/confirm 自动应答，避免弹窗卡住录制'); window.prompt=(_)=>'画风与目标客群不符'; window.confirm=(_)=>true; window.alert=(_)=>{}; })()"
+wait_ms 2500
+
+eval "window.__cap('② 搜出受害者 RRWebFx Blacklist Victim（默认 status=待联系）')"
+wait_ms 2000
+hover "#qInput"
+click "#qInput"
+type "#qInput" "RRWebFx Blacklist Victim"
+wait_ms 1200
+assert_count ".crm-table tbody tr" 1
+
+eval "window.__cap('③ 点行尾「不适合」按钮 → POST /api/people/<id>/reject')"
+wait_ms 2000
+
+hover ".crm-table tbody tr:first-child button[onclick^=\"onReject\"]"
+wait_ms 600
+click ".crm-table tbody tr:first-child button[onclick^=\"onReject\"]"
+wait_ms 2000
+
+eval "window.__cap('④ Reject 完默认列表里这人消失了')"
+wait_ms 2000
+assert_count ".crm-table tbody tr" 0
+
+eval "window.__cap('⑤ 勾「显示已拒绝」复选框 → 人重新出现，按钮变成「取消标记」')"
+wait_ms 2000
+hover "label:has(input[type=\"checkbox\"]) >> text=显示已拒绝"
+wait_ms 500
+click "label:has(input[type=\"checkbox\"]) >> text=显示已拒绝"
+wait_ms 1500
+assert_count ".crm-table tbody tr" 1
+assert_text "取消标记"
+
+eval "window.__cap('⑥ 点「取消标记」→ unreject → 行恢复 status=待联系')"
+wait_ms 2000
+
+hover ".crm-table tbody tr:first-child button:has-text(\"取消标记\")"
+wait_ms 500
+click ".crm-table tbody tr:first-child button:has-text(\"取消标记\")"
+wait_ms 2000
+# After unreject the row should still be visible (because "显示已拒绝" is still on),
+# but the "不适合" button (not "取消标记") should be there.
+assert_count ".crm-table tbody tr:first-child button:has-text(\"不适合\")" 1
+
+eval "window.__cap('✅ 通过：reject 隐藏 + unreject 恢复 + 行尾按钮在两态之间切换')"
+wait_ms 3000

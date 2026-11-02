@@ -1,0 +1,107 @@
+# COVERAGE: staff 注册 → 未激活拒登 → admin 激活 → staff 登录成功; INTRODUCED: pre-d7c8577
+# ============================================================================
+#  端到端走一遍 onboarding 流程：
+#   1. 匿名 → /register 填表 → 提交 → "注册成功"
+#   2. 立刻拿新账号登录 → 红字"账号尚未激活"
+#   3. admin 登录 → /admin/users → 找到新人 → 点「激活」
+#   4. admin 退出 → 新人再登录 → 进 /people 成功
+# ============================================================================
+
+# ===== 1. 匿名走注册 =====
+goto http://localhost:5001/register
+wait_for input#username
+wait_ms 800
+
+eval "(()=>{ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; window.__cap('① 匿名访问 /register，填表'); })()"
+wait_ms 2500
+
+hover "input#username"
+click "input#username"
+type "input#username" "rrwebfx_staff"
+wait_ms 300
+hover "input#email"
+click "input#email"
+type "input#email" "rrwebfx_staff@example.local"
+wait_ms 300
+hover "input#display_name"
+click "input#display_name"
+type "input#display_name" "RRWebFx Staff Demo"
+wait_ms 300
+hover "input#password"
+click "input#password"
+type "input#password" "rrwebfx-secret-1"
+wait_ms 500
+hover "button#registerBtn"
+click "button#registerBtn"
+# success → setTimeout 2s 后自动跳 /login，所以这里要尽快确认 toast
+wait_text "注册成功"
+assert_text "注册成功"
+wait_url /login
+
+eval "(()=>{ if(!document.getElementById('__cap')){ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; } window.__cap('② 立刻拿新账号试登录 —— 应该被「账号尚未激活」挡掉'); })()"
+wait_ms 2500
+
+goto http://localhost:5001/login
+wait_for "input#username"
+wait_ms 500
+hover "input#username"
+type "input#username" "rrwebfx_staff"
+hover "input#password"
+type "input#password" "rrwebfx-secret-1"
+hover "button#loginBtn"
+click "button#loginBtn"
+wait_ms 2000
+wait_text "账号尚未激活"
+assert_text "账号尚未激活"
+
+eval "(()=>{ if(!document.getElementById('__cap')){ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; } window.__cap('③ 切到 admin 登录，去 /admin/users 找新人 → 点「激活」'); })()"
+wait_ms 2500
+
+# Login as admin
+hover "input#username"
+click "input#username"
+press "input#username" Control+a
+press "input#username" Backspace
+type "input#username" "admin"
+hover "input#password"
+click "input#password"
+press "input#password" Control+a
+press "input#password" Backspace
+type "input#password" "admin12345"
+hover "button#loginBtn"
+click "button#loginBtn"
+wait_url /similarity
+wait_ms 800
+
+goto http://localhost:5001/admin/users
+wait_for "#usersBox table"
+wait_ms 1500
+# Locate the row for the new staff and click 激活
+hover "tr:has-text(\"rrwebfx_staff\") button[data-act=\"activate\"]"
+wait_ms 600
+click "tr:has-text(\"rrwebfx_staff\") button[data-act=\"activate\"]"
+wait_ms 2000
+# After activate, the button on that row should switch to 停用
+assert_count "tr:has-text(\"rrwebfx_staff\") button[data-act=\"deactivate\"]" 1
+
+eval "(()=>{ if(!document.getElementById('__cap')){ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; } window.__cap('④ admin 退出，新人再登录 —— 应该进得去 /people'); })()"
+wait_ms 2500
+
+# Find logout link
+goto http://localhost:5001/login
+wait_for "input#username"
+wait_ms 500
+hover "input#username"
+type "input#username" "rrwebfx_staff"
+hover "input#password"
+type "input#password" "rrwebfx-secret-1"
+hover "button#loginBtn"
+click "button#loginBtn"
+wait_ms 2500
+# Staff lands on /people (not /similarity which is admin-only)
+assert_url_contains /people
+# Staff has 0 assigned people → table may be hidden; just confirm the page mounted
+wait_text "客户"
+
+eval "(()=>{ if(!document.getElementById('__cap')){ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; } window.__cap('✅ 通过：注册 → 拒登 → admin 激活 → 登录成功'); })()"
+wait_ms 3000

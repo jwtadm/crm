@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}IG Scout{% endblock %}</title>
+<style>
+:root {
+  --bg: #f5f6f8;
+  --surface: #ffffff;
+  --surface2: #eef0f3;
+  --border: #dfe1e6;
+  --text: #1a1a22;
+  --text2: #5f6470;
+  --accent: #6d5ae6;
+  --accent-hover: #5a47d6;
+  --accent-dim: rgba(109,90,230,0.10);
+  --green: #16a34a;
+  --green-dim: rgba(22,163,74,0.12);
+  --orange: #ea580c;
+  --orange-dim: rgba(234,88,12,0.12);
+  --red: #dc2626;
+  --red-dim: rgba(220,38,38,0.10);
+  --blue: #2563eb;
+  --blue-dim: rgba(37,99,235,0.10);
+  --pink: #db2777;
+  --pink-dim: rgba(219,39,123,0.10);
+  --radius: 10px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); line-height: 1.5; }
+.container { max-width: 1100px; margin: 0 auto; padding: 0 20px 32px; }
+
+/* Top nav */
+.topnav { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 20px; position: sticky; top: 0; z-index: 100; }
+.topnav-inner { max-width: 1100px; margin: 0 auto; display: flex; align-items: center; gap: 4px; height: 56px; }
+.brand { font-weight: 700; font-size: 17px; margin-right: 16px; }
+.brand span { color: var(--accent); }
+.navlink { padding: 8px 14px; border-radius: 8px; color: var(--text2); text-decoration: none; font-size: 13px; font-weight: 500; transition: all .15s; }
+.navlink:hover { color: var(--text); background: var(--surface2); }
+.navlink.active { color: var(--accent); background: var(--accent-dim); }
+.nav-stats { margin-left: auto; font-size: 12px; color: var(--text2); display: flex; gap: 14px; }
+.nav-stats b { color: var(--text); font-weight: 600; }
+
+/* Header */
+.page-header { padding: 28px 0 16px; }
+.page-header h1 { font-size: 24px; font-weight: 700; letter-spacing: -0.4px; }
+.page-header h1 span { color: var(--accent); }
+.page-header p { color: var(--text2); font-size: 13px; margin-top: 4px; }
+
+/* Cards */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 14px; }
+.card-header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.card-header h2 { font-size: 15px; font-weight: 600; }
+.card-header .h-badge { background: var(--accent); color: #fff; width: 24px; height: 24px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; }
+
+/* Form */
+textarea, input[type="text"], input[type="number"] {
+  width: 100%; padding: 10px 12px; background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 8px; color: var(--text); font-size: 13px; font-family: inherit; transition: border-color .15s;
+}
+textarea { font-family: 'SF Mono', 'Fira Code', monospace; resize: vertical; }
+textarea:focus, input:focus { outline: none; border-color: var(--accent); }
+.input-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.input-row label { font-size: 12px; color: var(--text2); }
+.input-row input[type="number"] { width: 90px; }
+
+/* Buttons */
+.btn { padding: 9px 18px; border: none; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all .15s; display: inline-flex; align-items: center; gap: 6px; font-family: inherit; }
+.btn:disabled { opacity: .4; cursor: not-allowed; }
+.btn-accent { background: var(--accent); color: #fff; }
+.btn-accent:hover:not(:disabled) { background: var(--accent-hover); }
+.btn-green { background: var(--green); color: #fff; }
+.btn-orange { background: var(--orange); color: #fff; }
+.btn-ghost { background: transparent; border: 1px solid var(--border); color: var(--text2); }
+.btn-ghost:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.btn-sm { padding: 5px 12px; font-size: 12px; }
+.btn-row { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; align-items: center; }
+
+/* Loading */
+.loading { display: none; align-items: center; gap: 8px; color: var(--text2); margin-top: 10px; font-size: 13px; }
+.loading.active { display: flex; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.spinner { width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; }
+
+/* Result item */
+.result-item { display: flex; gap: 10px; align-items: center; padding: 10px 12px; border-radius: 8px; background: var(--surface2); margin-bottom: 6px; transition: background .15s; }
+.result-item:hover { background: #e6e8ee; }
+.result-item img { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; background: var(--border); flex-shrink: 0; }
+.result-item .info { flex: 1; min-width: 0; }
+.result-item .name { font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.result-item .verified { color: var(--accent); font-size: 11px; }
+.result-item .full { color: var(--text2); font-weight: 400; font-size: 12px; }
+.result-item .meta { font-size: 11px; color: var(--text2); margin-top: 2px; }
+.result-item .meta b { color: var(--text); }
+.result-item .bio { font-size: 11px; color: var(--text2); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 700px; }
+.result-item .contact { font-size: 11px; color: var(--green); margin-top: 3px; }
+.result-item .source { font-size: 10px; color: var(--text2); margin-top: 2px; font-style: italic; }
+.platform-tag { padding: 1px 7px; border-radius: 10px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .3px; }
+.platform-instagram { background: var(--pink-dim); color: var(--pink); }
+.platform-tiktok { background: var(--accent-dim); color: var(--accent); }
+.platform-x { background: var(--blue-dim); color: var(--blue); }
+.platform-filter { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; font-size: 12px; cursor: pointer; user-select: none; }
+.platform-filter input { margin: 0; }
+.cat-tag { font-size: 10px; background: var(--accent-dim); color: var(--accent); padding: 1px 7px; border-radius: 10px; }
+.role-badge { padding: 1px 7px; border-radius: 10px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .3px; }
+.role-admin { background: var(--accent-dim); color: var(--accent); }
+.role-staff { background: var(--green-dim); color: var(--green); }
+.nav-user a { color: var(--text2); text-decoration: none; }
+.nav-user a:hover { color: var(--text); }
+
+/* Stats / status */
+.stats-bar { display: flex; gap: 14px; padding: 10px 14px; background: var(--surface2); border-radius: 8px; margin-bottom: 12px; font-size: 12px; }
+.stats-bar .stat { display: flex; align-items: center; gap: 6px; color: var(--text2); }
+.stats-bar .stat .num { font-weight: 700; color: var(--accent); }
+.error-msg { background: var(--red-dim); color: var(--red); padding: 8px 12px; border-radius: 8px; margin-top: 8px; font-size: 12px; }
+.info-msg { background: var(--blue-dim); color: var(--blue); padding: 8px 12px; border-radius: 8px; margin-top: 8px; font-size: 12px; }
+.empty { padding: 24px; text-align: center; color: var(--text2); font-size: 13px; }
+
+/* Selectable list */
+.list-controls { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+.list { max-height: 480px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; padding: 6px; }
+.list .result-item { background: transparent; cursor: pointer; padding: 8px 10px; }
+.list .result-item.selected { background: var(--accent-dim); }
+.list .result-item input[type="checkbox"] { margin: 0 6px 0 0; accent-color: var(--accent); }
+.score-pill { font-size: 10px; color: var(--text2); background: var(--surface); padding: 1px 6px; border-radius: 8px; }
+
+/* Query chips */
+.chip-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.chip { padding: 4px 10px; background: var(--surface2); border: 1px solid var(--border); border-radius: 14px; font-size: 11px; color: var(--text2); }
+.hidden { display: none !important; }
+</style>
+</head>
+<body data-active="{{ active or '' }}">
+<nav class="topnav">
+  <div class="topnav-inner">
+    <div class="brand"><span>Scout</span></div>
+    <a class="navlink admin-only hidden" id="navSimilarity" href="/similarity">相似发现</a>
+    <a class="navlink admin-only hidden" id="navQuery" href="/query">Query 搜索</a>
+    <a class="navlink" id="navPeople" href="/people">客户管理</a>
+    <a class="navlink admin-only hidden" id="navDatabase" href="/database">平台账号</a>
+    <a class="navlink admin-only hidden" id="navSettings" href="/settings">设置</a>
+    <a class="navlink admin-only hidden" id="navAdminUsers" href="/admin/users">员工/审计</a>
+    <a class="navlink" id="navMe" href="/me">我的偏好</a>
+    <div class="nav-stats" id="navStats"></div>
+    <div class="nav-user" id="navUser" style="margin-left:14px; display:flex; align-items:center; gap:10px; font-size:12px; color:var(--text2);"></div>
+  </div>
+</nav>
+<div class="container">
+  {% block content %}{% endblock %}
+</div>
+<script>
+const PLATFORM_LABEL = {instagram: 'IG', tiktok: 'TikTok', x: 'X'};
+const ALL_PLATFORMS = ['instagram', 'tiktok', 'x'];
+window.CURRENT_USER = null;
+function applyRoleVisibility() {
+  const isAdmin = window.CURRENT_USER && window.CURRENT_USER.role === 'admin';
+  document.querySelectorAll('.admin-only').forEach(el => {
+    el.classList.toggle('hidden', !isAdmin);
+  });
+  // Active page highlight (data-active set per page)
+  const active = document.body.getAttribute('data-active');
+  if (active) {
+    const node = document.getElementById('nav' + active.charAt(0).toUpperCase() + active.slice(1));
+    if (node) node.classList.add('active');
+  }
+}
+async function refreshNavStats() {
+  try {
+    const r = await fetch('/api/db/stats');
+    if (!r.ok) return;
+    const s = await r.json();
+    const by = s.by_platform || {};
+    const parts = [`<b>${s.people}</b> 个人`, `<b>${s.total}</b> 个账号`];
+    for (const p of ALL_PLATFORMS) {
+      parts.push(`<b>${by[p] || 0}</b> ${PLATFORM_LABEL[p]}`);
+    }
+    document.getElementById('navStats').innerHTML = parts.join(' · ');
+  } catch (e) {}
+}
+async function refreshUser() {
+  try {
+    const r = await fetch('/api/auth/me');
+    const data = await r.json();
+    window.CURRENT_USER = data.user;
+  } catch (e) {}
+  const el = document.getElementById('navUser');
+  if (!el) return;
+  if (window.CURRENT_USER) {
+    const u = window.CURRENT_USER;
+    const role = u.role === 'admin' ? '<span class="role-badge role-admin">admin</span>' : '<span class="role-badge role-staff">staff</span>';
+    el.innerHTML = `${role} <span>${escapeHtml(u.display_name || u.username)}</span> <a href="/change_password" title="修改自己的密码">改密码</a> <a href="#" id="logoutBtn">退出</a>`;
+    document.getElementById('logoutBtn').onclick = async (e) => {
+      e.preventDefault();
+      await fetch('/api/auth/logout', {method: 'POST'});
+      location.href = '/login';
+    };
+  } else {
+    el.innerHTML = '<a href="/login">登录</a>';
+  }
+  applyRoleVisibility();
+}
+refreshUser();
+refreshNavStats();
+
+// shared helpers
+function fmt(n) {
+  if (n == null || n === '') return '-';
+  n = +n;
+  if (n >= 1e6) return (n/1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return (n/1e3).toFixed(1) + 'K';
+  return n.toString();
+}
+function escapeHtml(s) {
+  if (s == null) return '';
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function platformTag(p) {
+  return `<span class="platform-tag platform-${p}">${p}</span>`;
+}
+function renderAccount(a, opts={}) {
+  const stats = [];
+  if (a.follower_count != null) stats.push(`<b>${fmt(a.follower_count)}</b> 粉丝`);
+  if (a.following_count != null) stats.push(`<b>${fmt(a.following_count)}</b> 关注`);
+  if (a.post_count != null) stats.push(`<b>${fmt(a.post_count)}</b> 帖子`);
+  const cat = a.category ? `<span class="cat-tag">${escapeHtml(a.category)}</span>` : '';
+  const verified = a.is_verified ? '<span class="verified">&#10003;</span>' : '';
+  const contact = [];
+  if (a.email) contact.push(`&#9993; ${escapeHtml(a.email)}`);
+  if (a.phone) contact.push(`&#9742; ${escapeHtml(a.phone)}`);
+  const contactHtml = contact.length ? `<div class="contact">${contact.join(' · ')}</div>` : '';
+  const bio = a.biography ? `<div class="bio">${escapeHtml(a.biography.replace(/\n/g,' · '))}</div>` : '';
+  const src = a.source ? `<div class="source">来源：${escapeHtml(a.source)}</div>` : '';
+  const score = (opts.showScore && a.score != null) ? `<span class="score-pill">匹配度 ${(a.score*100).toFixed(0)}%</span>` : '';
+  const cb = opts.checkbox ? `<input type="checkbox" class="select-cb" data-id="${a.id}">` : '';
+  return `<div class="result-item" data-id="${a.id}">
+    ${cb}
+    <img src="${a.profile_pic_url || ''}" alt="" onerror="this.style.display='none'">
+    <div class="info">
+      <div class="name">${platformTag(a.platform)} @${escapeHtml(a.username)} ${verified} <span class="full">${escapeHtml(a.full_name)}</span> ${cat} ${score}</div>
+      <div class="meta">${stats.join(' · ') || '<span style="color:var(--text2)">暂无统计数据</span>'}</div>
+      ${bio}
+      ${contactHtml}
+      ${src}
+    </div>
+  </div>`;
+}
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

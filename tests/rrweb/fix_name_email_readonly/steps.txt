@@ -1,0 +1,67 @@
+# COVERAGE: templates/people.html 姓名/邮箱 cells become read-only spans; INTRODUCED: d7c8577
+# ============================================================================
+#  Bug (修复前): 客户列表的「姓名」「邮箱」是 inline <input>，复制粘贴时容易
+#               误改 + 失焦自动 PATCH 保存。
+#  修复：       两列改成只读 <span class="name-display" / "email-display">，
+#               点击打开抽屉，抽屉里的 drawerName / drawerEmail 才能改。
+# ============================================================================
+
+goto http://localhost:5001/login
+wait_for input#username
+hover input#username
+type input#username "admin"
+hover input#password
+type input#password "admin12345"
+hover button#loginBtn
+click button#loginBtn
+wait_url /similarity
+goto http://localhost:5001/people
+wait_for ".crm-table tbody tr"
+wait_ms 800
+
+eval "(()=>{ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; window.__cap('① 用搜索框把列表过滤到本测试创建的那条客户'); })()"
+wait_ms 2000
+
+hover "#qInput"
+click "#qInput"
+type "#qInput" "RRWebFx Readonly Target"
+wait_ms 1200
+assert_count ".crm-table tbody tr" 1
+
+eval "window.__cap('② 姓名/邮箱列必须是只读 span，不能有 inline input —— 否则复制粘贴会误触保存')"
+wait_ms 3000
+
+# Invariant 1: no inline inputs anywhere in the table
+assert_count ".crm-table tbody tr .name-input" 0
+assert_count ".crm-table tbody tr .email-input" 0
+# Invariant 2: the visible row has both spans
+assert_count ".crm-table tbody tr .name-display" 1
+assert_count ".crm-table tbody tr .email-display" 1
+
+eval "window.__cap('② 点姓名格 —— 应该打开抽屉而不是进入编辑')"
+wait_ms 2500
+
+hover ".crm-table tbody tr:first-child .name-display"
+wait_ms 600
+click ".crm-table tbody tr:first-child .name-display"
+wait_for "#drawerName"
+assert_visible "#drawerName"
+assert_value "#drawerName" "RRWebFx Readonly Target"
+
+eval "window.__cap('③ 抽屉打开，里面才能改姓名 / 邮箱。改完失焦自动 PATCH')"
+wait_ms 3000
+
+click "#handlesDrawer button:has-text(\"关闭\")"
+wait_ms 1000
+
+eval "window.__cap('④ 关闭抽屉，再点邮箱格 —— 同样打开抽屉')"
+wait_ms 2500
+
+hover ".crm-table tbody tr:first-child .email-display"
+wait_ms 500
+click ".crm-table tbody tr:first-child .email-display"
+wait_for "#drawerEmail"
+assert_visible "#drawerEmail"
+
+eval "window.__cap('✅ 通过：列表里没有 .name-input/.email-input；点击都开抽屉')"
+wait_ms 3500

@@ -1,0 +1,26 @@
+.venv/
+__pycache__/
+*.pyc
+.playwright-mcp/
+.tg-bridge/
+*.xlsx
+.DS_Store
+config_local.py
+*.db
+*.sqlite
+*.sqlite3
+.session_secret
+
+# editor / tooling state
+.claude/
+.serena/
+.aider*
+.cursor/
+
+# transient artifacts
+*.bak
+*.bak-*
+
+# rrweb regression suite scratch DB
+tests/.scout-test.db
+tests/.scout-test.db-*

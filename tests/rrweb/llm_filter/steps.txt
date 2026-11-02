@@ -1,0 +1,86 @@
+# COVERAGE: /settings LLM_FILTER_ENABLED + ingest 的 ICP LLM 闸 + bulk 进度卡显示 LLM 滤掉数量; INTRODUCED: 2026-06-02
+# ============================================================================
+#  端到端：打开 LLM ICP 过滤 → 跑一次「全量找相似」 → 看进度卡的「LLM 滤掉：1」
+#
+#  1. /settings 勾上「启用」复选框，保存
+#  2. /similarity 顶部「🌐 全量找相似」 → 确认 → 进度
+#  3. 1 个种子 → 桩返回 3 个 sims（1 fitness + 2 artists）
+#  4. LLM 桩（dev_with_ig_stub._stub_classify_creators）按关键词丢掉 fitness
+#  5. 期望：LLM 滤掉=1，新增=2
+# ============================================================================
+
+goto http://localhost:5001/login
+wait_for input#username
+hover input#username
+type input#username "admin"
+hover input#password
+type input#password "admin12345"
+hover button#loginBtn
+click button#loginBtn
+wait_url /similarity
+wait_ms 1500
+
+eval "(()=>{ if(!document.getElementById('__cap')){ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; } window.__cap('① 跳到 /settings 勾上「启用 LLM ICP 过滤」'); })()"
+wait_ms 2500
+
+goto http://localhost:5001/settings
+wait_for "[data-key=\"LLM_FILTER_ENABLED\"]"
+wait_ms 1200
+
+# loadAll 在页面加载里读到 LLM_FILTER_ENABLED='' → 复选框默认未勾.
+# 用 check verb 强制勾上（比 click 稳：playwright 会确保最终状态是 checked，
+# 而 click 在某些 layout 下会落到 padding/label 上，啥都没切换）.
+hover "[data-key=\"LLM_FILTER_ENABLED\"]"
+check "[data-key=\"LLM_FILTER_ENABLED\"]"
+wait_ms 600
+
+# Sanity: 没勾上就直接报错，免得 save 之后才发现
+eval "(()=>{ const el=document.querySelector('[data-key=\"LLM_FILTER_ENABLED\"]'); if(!el.checked) throw new Error('checkbox didn\\'t flip to checked'); })()"
+
+eval "(()=>{ if(!document.getElementById('__cap')){ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; } window.__cap('② 点「保存」→ 等「已保存」反馈'); })()"
+wait_ms 2000
+
+hover "#saveBtn"
+click "#saveBtn"
+wait_text "已保存"
+wait_ms 1200
+
+# Sanity: round-trip through /api/settings and assert LLM_FILTER_ENABLED == '1'
+eval "(async()=>{ const r=await fetch('/api/settings'); const d=await r.json(); const v=(d.settings||{}).LLM_FILTER_ENABLED; window.__settingsCheck=v; if(v!=='1') throw new Error('expected LLM_FILTER_ENABLED to be saved as 1, got: '+JSON.stringify(v)); })()"
+
+eval "(()=>{ if(!document.getElementById('__cap')){ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; } window.__cap('③ 回到 /similarity，点「🌐 全量找相似」'); })()"
+wait_ms 2000
+
+goto http://localhost:5001/similarity
+wait_for "#bulkCard"
+wait_ms 1500
+
+assert_visible "#bulkBtn"
+
+# Confirm filter is still ON right before we click bulk (between settings
+# save and the bulk run we navigated; want to rule out the setting being lost)
+eval "(async()=>{ const r=await fetch('/api/settings'); const d=await r.json(); const v=(d.settings||{}).LLM_FILTER_ENABLED; if(v!=='1') throw new Error('LLM filter went off mid-test, got: '+JSON.stringify(v)); })()"
+
+hover "#bulkBtn"
+click "#bulkBtn"
+wait_for "#bulkModal:not(.hidden)"
+wait_text "种子数：1"
+wait_ms 1500
+
+eval "(()=>{ if(!document.getElementById('__cap')){ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; } window.__cap('④ 确认开跑 → 等 worker 跑完（status=done）'); })()"
+wait_ms 2000
+
+hover "#bulkConfirmBtn"
+click "#bulkConfirmBtn"
+wait_for "#bulkProgress:not(.hidden)"
+wait_for "#bulkStatus:has-text(\"done\")"
+wait_ms 1500
+
+eval "(()=>{ if(!document.getElementById('__cap')){ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; } window.__cap('⑤ 期望：LLM 滤掉=1（fitness coach），新增=2（illustrator + plushie maker）'); })()"
+wait_ms 3000
+
+# 关键断言：LLM 滤掉数 = 1，新增数 = 2
+eval "(()=>{ const t=document.getElementById('bulkStats').innerText; const m1=t.match(/LLM 滤掉：\\s*(\\d+)/); const m2=t.match(/新增：\\s*(\\d+)/); if(!m1||+m1[1]!==1) throw new Error('expected LLM 滤掉=1, got: '+JSON.stringify(t)); if(!m2||+m2[1]!==2) throw new Error('expected 新增=2, got: '+JSON.stringify(t)); window.__llmStats={dropped:+m1[1], kept:+m2[1]}; })()"
+
+eval "(()=>{ if(!document.getElementById('__cap')){ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; } window.__cap('✅ 通过：LLM 滤掉 '+window.__llmStats.dropped+'，新增 '+window.__llmStats.kept+'（fitness 被剔，2 个艺术家入库）'); })()"
+wait_ms 3500

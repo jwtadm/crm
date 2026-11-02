@@ -1,0 +1,89 @@
+# COVERAGE: drawer add-placeholder + add-with-hydrate + delete handle; INTRODUCED: pre-d7c8577
+# ============================================================================
+#  抽屉里三件事：
+#   1) 不勾「立即抓取」直接添加一个 X handle —— POST /api/people/<id>/handles
+#      创建 `(x, 'import:<handle>')` 占位行。
+#   2) 勾上「立即抓取」添加另一个 IG handle —— POST /api/db/import_handle
+#      走 platform fetch_user_info（dev 跑的是 dev_with_ig_stub 的桩）。
+#   3) 删掉一个 handle，确认抽屉 + 列表里都消失。
+# ============================================================================
+
+goto http://localhost:5001/login
+wait_for input#username
+hover input#username
+type input#username "admin"
+hover input#password
+type input#password "admin12345"
+hover button#loginBtn
+click button#loginBtn
+wait_url /similarity
+goto http://localhost:5001/people
+wait_for ".crm-table tbody tr"
+wait_ms 800
+
+eval "(()=>{ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; window.confirm=(_)=>true; window.alert=(_)=>{}; window.__cap('① 搜本测试客户 RRWebFx Handles Customer，打开抽屉'); })()"
+wait_ms 2500
+
+hover "#qInput"
+click "#qInput"
+type "#qInput" "RRWebFx Handles Customer"
+wait_ms 1200
+assert_count ".crm-table tbody tr" 1
+
+hover ".crm-table tbody tr:first-child .name-display"
+click ".crm-table tbody tr:first-child .name-display"
+wait_for "#drawerName"
+wait_ms 1000
+# Seed handle should be there as a placeholder chip
+assert_text "@rrwebfx_seedhandle"
+assert_text "占位"
+
+eval "window.__cap('② 添加 X handle，不勾「立即抓取」→ 应入库为占位行')"
+wait_ms 2500
+
+select "#newHandlePlatform" "x"
+wait_ms 400
+hover "#newHandleUser"
+click "#newHandleUser"
+type "#newHandleUser" "rrwebfx_xhandle"
+wait_ms 600
+# Uncheck 立即抓取
+click "#newHandleHydrate"
+wait_ms 500
+hover "#newHandleBtn"
+click "#newHandleBtn"
+wait_ms 2500
+# Drawer should now show the new X chip as 占位
+assert_text "@rrwebfx_xhandle"
+
+eval "window.__cap('③ 再添加一个 IG handle，这次勾上「立即抓取」→ 走 fetch_user_info（dev 桩）')"
+wait_ms 2500
+
+select "#newHandlePlatform" "instagram"
+wait_ms 400
+hover "#newHandleUser"
+click "#newHandleUser"
+press "#newHandleUser" Control+a
+press "#newHandleUser" Backspace
+type "#newHandleUser" "rrwebfx_realhandle"
+wait_ms 600
+# Re-check 立即抓取
+click "#newHandleHydrate"
+wait_ms 500
+hover "#newHandleBtn"
+click "#newHandleBtn"
+wait_ms 3500
+assert_text "@rrwebfx_realhandle"
+
+eval "window.__cap('④ 删掉刚加的 X handle → 抽屉 + 列表都不再显示')"
+wait_ms 2500
+
+hover ".h-row:has(span.uname:has-text(\"@rrwebfx_xhandle\")) button.x-del"
+wait_ms 600
+click ".h-row:has(span.uname:has-text(\"@rrwebfx_xhandle\")) button.x-del"
+wait_ms 2500
+# After delete the X chip should be gone
+assert_count ".h-row:has(span.uname:has-text(\"@rrwebfx_xhandle\"))" 0
+
+eval "window.__cap('✅ 通过：handles 抽屉的增删 + 占位 vs 立即抓取 两条路径都通')"
+wait_ms 3000

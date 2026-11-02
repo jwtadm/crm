@@ -1,0 +1,95 @@
+# COVERAGE: group mailer → email_jobs persistence + mailer.send_one; INTRODUCED: pre-d7c8577
+# ============================================================================
+#  完整跑一遍群发：
+#    1. /people 过滤出本测试的两个收件人（都有邮箱）
+#    2. 勾上两行 → 「群发邮件」按钮变为可点 + 显示「群发邮件 (2)」
+#    3. 打开 compose modal，填主题 + 正文，点发送
+#    4. confirm() 桩成 true → POST /api/email/send_batch → 后端启异步 job
+#       → 桩的 mailer.send_one 把消息记到内存
+#    5. 轮询 /api/email/job/<id> 直到 status='done'
+#    6. 跳回 /__stub__/sent 看消息真的"发"出去了
+# ============================================================================
+
+goto http://localhost:5001/login
+wait_for input#username
+hover input#username
+type input#username "admin"
+hover input#password
+type input#password "admin12345"
+hover button#loginBtn
+click button#loginBtn
+wait_url /similarity
+goto http://localhost:5001/people
+wait_for ".crm-table tbody tr"
+wait_ms 800
+
+# Reset stub mailbox so we count only this run's messages
+eval "fetch('/__stub__/reset', {method:'POST'})"
+wait_ms 500
+
+eval "(()=>{ if(!document.getElementById('__cap')){ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; } window.confirm=(_)=>true; window.alert=(m)=>{ console.log('[alert]', m); }; window.__cap('① 过滤出本测试的两个收件人（有邮箱）'); })()"
+wait_ms 3000
+
+hover "#qInput"
+click "#qInput"
+type "#qInput" "RRWebFx Mailer Recipient"
+wait_ms 1500
+assert_count ".crm-table tbody tr" 2
+
+eval "window.__cap('② 勾选两行 → 「群发邮件」按钮显示「群发邮件 (2)」')"
+wait_ms 2500
+
+hover ".crm-table tbody tr:nth-child(1) .row-cb"
+click ".crm-table tbody tr:nth-child(1) .row-cb"
+wait_ms 400
+hover ".crm-table tbody tr:nth-child(2) .row-cb"
+click ".crm-table tbody tr:nth-child(2) .row-cb"
+wait_ms 600
+wait_text "已选 2 人"
+assert_text "已选 2 人"
+
+eval "window.__cap('③ 点开「群发邮件」compose modal，填主题 + 正文')"
+wait_ms 2500
+
+hover "#bulkBtn"
+click "#bulkBtn"
+wait_for "#emailSubject"
+wait_ms 1000
+hover "#emailSubject"
+click "#emailSubject"
+type "#emailSubject" "RRWebFx Test Subject"
+wait_ms 500
+hover "#emailBody"
+click "#emailBody"
+type "#emailBody" "Hi {{name}} — this is a fixture body. Reply to confirm receipt."
+wait_ms 800
+# Throttle 0 so job finishes within a couple seconds
+hover "#throttleInput"
+click "#throttleInput"
+press "#throttleInput" Control+a
+press "#throttleInput" Backspace
+type "#throttleInput" "0"
+wait_ms 500
+
+eval "window.__cap('④ 点发送 → confirm 桩自动 true → 启动 email_jobs 异步任务')"
+wait_ms 2500
+
+hover "#sendBtn"
+click "#sendBtn"
+# Job progress shows up; wait for 完成 marker
+wait_text "✓ 完成"
+wait_ms 1000
+
+eval "window.__cap('⑤ 校验：mailer 桩的内存信箱里有 2 条；DB 的 email_jobs 表多了 1 条记录')"
+wait_ms 3000
+
+# Visit the stub mailbox via a small fetch inside an eval so the asserts run on the response text
+goto http://localhost:5001/__stub__/sent
+wait_text "count"
+wait_text "RRWebFx Test Subject"
+assert_text "RRWebFx Test Subject"
+assert_text "rrwebfx_recip1@stub.local"
+assert_text "rrwebfx_recip2@stub.local"
+
+eval "(()=>{ if(!document.getElementById('__cap')){ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; } window.__cap('✅ 通过：群发 → 异步 job → mailer.send_one 收到 2 条'); })()"
+wait_ms 3500

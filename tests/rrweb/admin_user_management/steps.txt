@@ -1,0 +1,106 @@
+# COVERAGE: /admin/users — activate / reset_password / role toggle / deactivate / delete + audit log; INTRODUCED: pre-d7c8577
+# ============================================================================
+#  本测试把一个新员工从 0 走到删完：
+#    1. seed 已通过 auth.create_user 建好 rrwebfx_managed_staff（is_active=0）
+#    2. /admin/users 找到该行 → 点「激活」→ 按钮变成「停用」
+#    3. 点「重置密码」→ 弹窗显示临时密码 → audit_log 多一条 user.password_reset
+#    4. 点「升为 admin」→ 行内 role badge 变 admin → 按钮变「降为 staff」
+#    5. 再点「降为 staff」→ 回退
+#    6. 点「停用」→ confirm 拦截转客户提示 → 按钮回到「激活」
+#    7. 点「删除」→ confirm 通过 → 用户行整体消失
+#  额外校验：右侧审计区出现 activate / password_reset / role_change /
+#  deactivate / delete 5 类事件中的至少 3 类。
+# ============================================================================
+
+goto http://localhost:5001/login
+wait_for input#username
+hover input#username
+type input#username "admin"
+hover input#password
+type input#password "admin12345"
+hover button#loginBtn
+click button#loginBtn
+wait_url /similarity
+goto http://localhost:5001/admin/users
+wait_for "#usersBox table"
+wait_ms 1500
+
+eval "(()=>{ if(!document.getElementById('__cap')){ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; } window.confirm=(_)=>true; window.alert=(m)=>{ console.log('[alert]', m); }; window.__cap('① /admin/users 里找到种好的未激活员工 rrwebfx_managed_staff'); })()"
+wait_ms 3000
+
+# Confirm the seed user is there & inactive (the row's status cell shows "未激活")
+assert_count "tr:has-text(\"rrwebfx_managed_staff\")" 1
+assert_text "未激活"
+
+eval "window.__cap('② 点「激活」→ /api/admin/users/<id>/activate → 状态从未激活 → 激活；按钮变成「停用」')"
+wait_ms 2500
+
+hover "tr:has-text(\"rrwebfx_managed_staff\") button[data-act=\"activate\"]"
+wait_ms 500
+click "tr:has-text(\"rrwebfx_managed_staff\") button[data-act=\"activate\"]"
+wait_ms 2000
+assert_count "tr:has-text(\"rrwebfx_managed_staff\") button[data-act=\"deactivate\"]" 1
+
+eval "window.__cap('③ 点「重置密码」→ 后端返回临时 12 位密码（弹窗会展示，被 alert 桩吞了）')"
+wait_ms 2500
+
+hover "tr:has-text(\"rrwebfx_managed_staff\") button[data-act=\"reset\"]"
+wait_ms 500
+click "tr:has-text(\"rrwebfx_managed_staff\") button[data-act=\"reset\"]"
+wait_ms 2000
+
+eval "window.__cap('④ 点「升为 admin」→ 行 role badge 变 admin → 按钮变成「降为 staff」')"
+wait_ms 2500
+
+hover "tr:has-text(\"rrwebfx_managed_staff\") button[data-act=\"role\"]"
+wait_ms 500
+click "tr:has-text(\"rrwebfx_managed_staff\") button[data-act=\"role\"]"
+wait_ms 2000
+# Now the row's role cell should contain "admin"
+assert_count "tr:has-text(\"rrwebfx_managed_staff\") .role-admin" 1
+# And the role button text flips
+assert_text "降为 staff"
+
+eval "window.__cap('⑤ 再点「降为 staff」→ 还原')"
+wait_ms 2500
+
+hover "tr:has-text(\"rrwebfx_managed_staff\") button[data-act=\"role\"]"
+wait_ms 500
+click "tr:has-text(\"rrwebfx_managed_staff\") button[data-act=\"role\"]"
+wait_ms 2000
+assert_count "tr:has-text(\"rrwebfx_managed_staff\") .role-staff" 1
+
+eval "window.__cap('⑥ 点「停用」→ confirm 桩=true（转回未分配池）→ /deactivate → 按钮回「激活」')"
+wait_ms 2500
+
+hover "tr:has-text(\"rrwebfx_managed_staff\") button[data-act=\"deactivate\"]"
+wait_ms 500
+click "tr:has-text(\"rrwebfx_managed_staff\") button[data-act=\"deactivate\"]"
+wait_ms 2000
+assert_count "tr:has-text(\"rrwebfx_managed_staff\") button[data-act=\"activate\"]" 1
+
+eval "window.__cap('⑦ 点「删除」→ confirm 桩=true → DELETE /api/admin/users/<id> → 行消失')"
+wait_ms 2500
+
+# Note: delete is only allowed for users that never logged in and own 0 customers.
+# Our seed satisfies both.
+hover "tr:has-text(\"rrwebfx_managed_staff\") button[data-act=\"delete\"]"
+wait_ms 500
+click "tr:has-text(\"rrwebfx_managed_staff\") button[data-act=\"delete\"]"
+wait_ms 2500
+assert_count "tr:has-text(\"rrwebfx_managed_staff\")" 0
+
+eval "window.__cap('⑧ 校验审计：刷新审计区 → 至少有 activate / password_reset / role_change / deactivate / delete 中的几类')"
+wait_ms 2500
+
+hover "#auditRefreshBtn"
+click "#auditRefreshBtn"
+wait_ms 1500
+assert_text "user.activate"
+assert_text "user.password_reset"
+assert_text "user.role_change"
+assert_text "user.deactivate"
+assert_text "user.delete"
+
+eval "window.__cap('✅ 通过：admin 5 个操作 + 审计日志都对得上')"
+wait_ms 3500

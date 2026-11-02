@@ -1,0 +1,112 @@
+# COVERAGE: admin reset_password → temp pw alphabet excludes Il10O → temp pw actually logs in → must_change → new pw works; INTRODUCED: post-2ba9238
+# ============================================================================
+#  历史背景：Talia 的临时密码 XtupQI2igVbL 因为大写 I 和小写 l 在浏览器里长得一
+#           模一样，员工试错触发 5/min 限流后再也登不进。
+#  修复 + 回归：
+#    (a) app.py:api_admin_user_reset_password 改用不含 I/l/1/0/O 的字母表
+#    (b) 这条测试端到端：admin reset → 临时密码登 staff → 跳 /change_password →
+#        改密 → 新密码登 OK
+#
+#  安全：本测试只动 fixture 用户 rrwebfx_pwtest_staff，runner 把 SCOUT_DB_PATH 隔
+#  离到 tests/.scout-test.db，seed._assert_test_db 再加一层保险，不会污染真实
+#  员工的临时密码。
+# ============================================================================
+
+# ===== 1. admin 登录 =====
+goto http://localhost:5001/login
+wait_for input#username
+hover input#username
+type input#username "admin"
+hover input#password
+type input#password "admin12345"
+hover button#loginBtn
+click button#loginBtn
+wait_url /similarity
+goto http://localhost:5001/admin/users
+wait_for "#usersBox table"
+wait_ms 1500
+
+# ===== 2. 拦 alert，准备捕获临时密码 =====
+eval "(()=>{ if(!document.getElementById('__cap')){ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; } window.confirm=(_)=>true; window.alert=(m)=>{ console.log('[alert]', m); const mm=String(m).match(/[A-Za-z0-9]{12}/); if(mm){ sessionStorage.setItem('__tmppw', mm[0]); } }; window.__cap('① 拦截 alert；点重置时把 12 位临时密码塞进 sessionStorage'); })()"
+wait_ms 2500
+
+# ===== 3. 点重置密码 =====
+eval "window.__cap('② 找到 rrwebfx_pwtest_staff，点「重置密码」')"
+wait_ms 2000
+
+assert_count "tr:has-text(\"rrwebfx_pwtest_staff\")" 1
+hover "tr:has-text(\"rrwebfx_pwtest_staff\") button[data-act=\"reset\"]"
+wait_ms 500
+click "tr:has-text(\"rrwebfx_pwtest_staff\") button[data-act=\"reset\"]"
+wait_ms 2500
+
+# ===== 4. 校验密码已捕获 + 不含歧义字符 =====
+eval "(()=>{ const p = sessionStorage.getItem('__tmppw'); if(!p) throw new Error('did not capture temp_password from alert'); if(/[Il10O]/.test(p)) throw new Error('temp_password contains ambiguous char: '+p); window.__cap('③ 抓到了：' + p + ' (校验通过：无 I/l/1/0/O)'); })()"
+wait_ms 3500
+
+# ===== 5. 用临时密码登 staff，应该跳 /change_password =====
+goto http://localhost:5001/login
+wait_for input#username
+wait_ms 800
+
+eval "(()=>{ if(!document.getElementById('__cap')){ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; } window.__cap('④ 用 admin 给的临时密码登 staff —— 应跳 /change_password'); })()"
+wait_ms 2500
+
+hover input#username
+click input#username
+type input#username "rrwebfx_pwtest_staff"
+wait_ms 400
+hover input#password
+click input#password
+# Type the captured pw via DOM since `type` can't read JS state
+eval "(()=>{ const el = document.getElementById('password'); el.value = sessionStorage.getItem('__tmppw'); el.dispatchEvent(new Event('input', {bubbles:true})); el.dispatchEvent(new Event('change', {bubbles:true})); })()"
+wait_ms 600
+hover button#loginBtn
+click button#loginBtn
+wait_url /change_password
+assert_url_contains /change_password
+
+eval "(()=>{ if(!document.getElementById('__cap')){ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; } window.__cap('⑤ 登录成功，because must_change_pw=1 → /change_password —— 临时密码就是为这一步用的'); })()"
+wait_ms 3000
+
+# ===== 6. 改密 =====
+hover "input#old"
+click "input#old"
+eval "(()=>{ const el = document.getElementById('old'); el.value = sessionStorage.getItem('__tmppw'); el.dispatchEvent(new Event('input', {bubbles:true})); })()"
+wait_ms 500
+hover "input#new"
+click "input#new"
+type "input#new" "rrwebfx-newpass-1"
+wait_ms 400
+hover "input#new2"
+click "input#new2"
+type "input#new2" "rrwebfx-newpass-1"
+wait_ms 600
+hover "button#btn"
+click "button#btn"
+wait_text "修改成功"
+assert_text "修改成功"
+wait_ms 1500
+
+# ===== 7. 用新密码登一次，确认 must_change_pw 已清 =====
+goto http://localhost:5001/login
+wait_for input#username
+wait_ms 800
+
+eval "(()=>{ if(!document.getElementById('__cap')){ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; } window.__cap('⑥ 用新密码登 → 应直接进 /people（不再跳 /change_password）'); })()"
+wait_ms 2500
+
+hover input#username
+click input#username
+type input#username "rrwebfx_pwtest_staff"
+hover input#password
+click input#password
+type input#password "rrwebfx-newpass-1"
+wait_ms 500
+hover button#loginBtn
+click button#loginBtn
+wait_url /people
+assert_url_contains /people
+
+eval "(()=>{ if(!document.getElementById('__cap')){ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; } window.__cap('✅ 通过：临时密码无歧义字符 + 真能登 + 走 must_change → 新密码可继续用'); })()"
+wait_ms 3500

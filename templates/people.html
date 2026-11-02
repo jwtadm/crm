@@ -1,0 +1,1873 @@
+{% extends "_base.html" %}
+{% set active = "people" %}
+{% block title %}客户管理 · Scout{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>客户 <span>管理</span></h1>
+  <p>按"人"为单位的总览。状态/标签/负责人可就地编辑；点 ✉ 联系会同时打开邮件客户端 + 标记已联系。</p>
+</div>
+
+<div class="card admin-only hidden" id="hydrateCard" style="border:1px dashed var(--accent);">
+  <div class="card-header"><div class="h-badge">🌊</div><h2>批量补全（hydrate placeholder）</h2></div>
+  <p style="color:var(--text2); margin:4px 0 12px;">把 <code>import:&lt;handle&gt;</code> 占位账号升格成真账号（拉 pk_id + bio + email），之后才能拿它们当「相似发现」种子。串行执行、断电可续。</p>
+  <div id="hydrateLauncher">
+    <button class="btn btn-accent" id="hydrateBtn" onclick="openHydrateModal()">🌊 批量补全</button>
+    <span id="hydrateActiveHint" style="margin-left:12px; color:var(--text2); font-size:12px;"></span>
+  </div>
+  <div id="hydrateProgress" class="hidden" style="margin-top:8px;">
+    <div class="stats-bar" id="hydrateStats"></div>
+    <div style="margin:8px 0 6px; font-size:13px; color:var(--text2);">
+      <span id="hydrateCursor">0 / 0</span> 个 · 状态：<b id="hydrateStatus">running</b>
+      <span id="hydrateSpin" class="spinner" style="display:inline-block; vertical-align:middle; margin-left:6px;"></span>
+    </div>
+    <div style="background:var(--surface2); border-radius:6px; height:6px; overflow:hidden; margin:8px 0;">
+      <div id="hydrateBar" style="height:100%; width:0%; background:var(--accent); transition:width .4s;"></div>
+    </div>
+    <div id="hydrateTail" style="font-size:11px; color:var(--text2); margin-top:6px; max-height:120px; overflow:auto;"></div>
+    <div class="input-row" style="margin-top:10px; gap:8px;">
+      <button class="btn btn-accent btn-sm hidden" id="hydrateResumeBtn" onclick="resumeHydrate()">↻ 续跑</button>
+      <button class="btn btn-ghost btn-sm hidden" id="hydrateCancelBtn" onclick="cancelHydrate()">🚫 放弃此任务</button>
+      <button class="btn btn-ghost btn-sm" onclick="dismissHydrate()">关闭</button>
+    </div>
+  </div>
+</div>
+
+<div id="hydrateModal" class="hidden" style="position:fixed; inset:0; z-index:9000; background:rgba(0,0,0,.5); display:flex; align-items:center; justify-content:center;">
+  <div style="background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:22px; width:min(520px, 92vw); max-height:88vh; overflow:auto;">
+    <h3 style="margin:0 0 14px;">确认开跑：批量 hydrate</h3>
+    <div id="hydrateEstimate" style="font-size:13px; line-height:1.6;">加载中…</div>
+    <div style="margin-top:14px; font-size:12px; color:var(--text2);">客户状态范围（不勾＝不按状态过滤，把全部 placeholder 都跑）</div>
+    <div class="input-row" id="hydrateStatuses" style="gap:10px; flex-wrap:wrap; margin-top:6px;"></div>
+    <div class="input-row" style="margin-top:18px; gap:8px; justify-content:flex-end;">
+      <button class="btn btn-ghost btn-sm" onclick="closeHydrateModal()">取消</button>
+      <button class="btn btn-accent" id="hydrateConfirmBtn" onclick="startHydrate()">确认开跑</button>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="list-controls">
+    <input type="text" id="qInput" placeholder="搜索：姓名 / 邮箱 / 账号名（@handle）/ 备注 / 标签" style="flex:2; min-width:240px;" oninput="debouncedLoad()">
+    <label class="filter-label">状态
+      <select id="statusSel" onchange="reloadFiltered()">
+        <option value="">不限</option>
+        <option value="待联系">待联系</option>
+        <option value="已联系">已联系</option>
+        <option value="已回复">已回复</option>
+        <option value="已放弃">已放弃</option>
+        <option value="已成交">已成交</option>
+        <option value="主动来找">主动来找</option>
+      </select>
+    </label>
+    <label class="filter-label">平台
+      <select id="platSel" onchange="reloadFiltered()">
+        <option value="">不限</option>
+        <option value="instagram">有 IG</option>
+        <option value="x">有 X</option>
+        <option value="tiktok">有 TikTok</option>
+        <option value="any">至少有一个</option>
+        <option value="none">无任何账号</option>
+      </select>
+    </label>
+    <label class="filter-label">邮箱
+      <select id="emailSel" onchange="reloadFiltered()">
+        <option value="">不限</option>
+        <option value="yes">仅有邮箱</option>
+        <option value="no">仅无邮箱</option>
+      </select>
+    </label>
+    <label class="filter-label">排序
+      <select id="orderSel" onchange="reloadFiltered()">
+        <option value="last_contacted">最近联系</option>
+        <option value="followers">粉丝数（高→低）</option>
+        <option value="updated">最近更新</option>
+        <option value="created">创建时间（新→旧）</option>
+        <option value="created_asc">创建时间·正序（核对用，行不会跳）</option>
+        <option value="name">姓名</option>
+      </select>
+    </label>
+    <label class="filter-label admin-only hidden">分配
+      <select id="assignSel" onchange="reloadFiltered()">
+        <option value="">不限</option>
+        <option value="unassigned">未分配</option>
+      </select>
+    </label>
+    <label class="filter-label">
+      <input type="checkbox" id="includeRejected" onchange="reloadFiltered()" style="accent-color:var(--accent);">
+      显示已拒绝
+    </label>
+  </div>
+  <div class="btn-row" style="margin-top:6px; align-items:center; flex-wrap:wrap; gap:8px;">
+    <button class="btn btn-green btn-sm" onclick="openAddCustomer()">+ 添加客户</button>
+    <span id="resultMeta" style="color:var(--text2); font-size:12px;"></span>
+    <button class="btn btn-ghost btn-sm" onclick="selectAllMatching()" id="selAllMatchingBtn">全选匹配的</button>
+    <button class="btn btn-ghost btn-sm" onclick="clearSelection()" id="clearSelBtn" disabled>清空选中</button>
+    <span id="selMeta" style="color:var(--accent); font-size:12px;"></span>
+    <button class="btn btn-accent btn-sm" id="bulkBtn" onclick="openCompose()" disabled>群发邮件</button>
+    <select id="bulkAssignSel" class="admin-only hidden" disabled style="padding:5px 8px; font-size:12px; background:var(--surface2); border:1px solid var(--border); border-radius:6px; color:var(--text);"></select>
+    <button class="btn btn-ghost btn-sm admin-only hidden" id="bulkAssignBtn" disabled onclick="bulkAssign()">批量分配</button>
+    <span style="margin-left:auto;"></span>
+    <button class="btn btn-ghost btn-sm" onclick="prevPage()" id="prevBtn">← 上一页</button>
+    <button class="btn btn-ghost btn-sm" onclick="nextPage()" id="nextBtn">下一页 →</button>
+  </div>
+  <div id="tableWrap" style="margin-top: 12px;"><div class="empty">加载中…</div></div>
+</div>
+
+<!-- Add-customer modal -->
+<div id="addModal" class="hidden" style="position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:300; display:flex; align-items:center; justify-content:center;" onclick="onAddBackdrop(event)">
+  <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 10px; width: min(560px, 92%); max-height: 90vh; overflow-y: auto; padding: 24px;" onclick="event.stopPropagation()">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 14px;">
+      <h2 style="font-size:16px;">添加客户</h2>
+      <button class="btn btn-ghost btn-sm" onclick="closeAddCustomer()">✕ 关闭</button>
+    </div>
+    <p style="color:var(--text2); font-size:12px; margin-bottom:14px;">
+      邮箱或任一平台 handle 必填一项（用于去重）。其他都可以以后再补。
+    </p>
+    <div class="add-grid">
+      <label>姓名 <input type="text" id="addName" placeholder="如 Echo Fan"></label>
+      <label>邮箱 <input type="text" id="addEmail" placeholder="someone@example.com"></label>
+      <label>状态
+        <select id="addStatus">
+          <option value="主动来找" selected>主动来找</option>
+          <option value="待联系">待联系</option>
+          <option value="已联系">已联系</option>
+          <option value="已回复">已回复</option>
+          <option value="已成交">已成交</option>
+          <option value="已放弃">已放弃</option>
+        </select>
+      </label>
+      <label>负责人 <input type="text" id="addOwner" placeholder="Echo / SummerLily / ..."></label>
+      <label>Instagram <input type="text" id="addIG" placeholder="@username 或 username"></label>
+      <label>X (Twitter) <input type="text" id="addX" placeholder="@handle"></label>
+      <label>TikTok <input type="text" id="addTT" placeholder="@handle"></label>
+      <label>标签（英文逗号分隔）<input type="text" id="addTags" placeholder="如 IG, 美国, 大粉"></label>
+      <label style="grid-column: 1 / -1;">备注 <textarea id="addNotes" rows="3" placeholder="如何找到他们 / 兴趣点 / 沟通进度等"></textarea></label>
+    </div>
+    <div class="btn-row" style="margin-top:14px;">
+      <button class="btn btn-accent btn-sm" id="addSubmitBtn" onclick="submitAddCustomer()">保存</button>
+      <span id="addStatus2" style="color:var(--text2); font-size:12px;"></span>
+    </div>
+  </div>
+</div>
+
+<style>
+.add-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.add-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text2); }
+.add-grid input, .add-grid select, .add-grid textarea { width: 100%; }
+@media (max-width: 600px) { .add-grid { grid-template-columns: 1fr; } }
+</style>
+
+{% raw %}
+<!-- Compose modal (two-column: editor on the left, live preview on the right) -->
+<div id="composeModal" class="hidden" style="position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:300; display:flex; align-items:center; justify-content:center;" onclick="onBackdropClick(event)">
+  <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 10px; width: min(1180px, 96%); max-height: 92vh; overflow:hidden; display:flex; flex-direction:column;" onclick="event.stopPropagation()">
+
+    <div style="padding:20px 24px 14px; border-bottom:1px solid var(--border); flex:0 0 auto;">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <h2 style="font-size:16px;">群发邮件</h2>
+        <button class="btn btn-ghost btn-sm" onclick="closeCompose()">✕ 关闭</button>
+      </div>
+      <div id="recipientsSummary" style="background: var(--surface2); padding: 10px 12px; border-radius: 8px; margin-top: 10px; font-size: 12px;"></div>
+    </div>
+
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0; flex:1 1 auto; overflow:hidden; min-height:0;">
+
+      <!-- LEFT: editor -->
+      <div style="padding:18px 22px; overflow-y:auto; border-right:1px solid var(--border);">
+
+        <div style="font-size:12px; color:var(--text2); margin-bottom:6px;">
+          可以把客户信息当变量插入到主题 / 正文里 —— 点下面的按钮把对应变量塞到光标处：
+        </div>
+        <div id="placeholderChips" style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:14px;"></div>
+
+        <label style="display:block; font-size:12px; color:var(--text2); margin-bottom:4px;">主题</label>
+        <input type="text" id="emailSubject" placeholder="例：Hi {{name}}，关于 mycraftzone…" style="margin-bottom:10px;" oninput="schedulePreview()">
+
+        <label style="display:block; font-size:12px; color:var(--text2); margin-bottom:4px;">正文（纯文本）</label>
+        <textarea id="emailBody" rows="14" placeholder="Hi {{name}},&#10;&#10;先简单自我介绍一下…" style="margin-bottom:10px; font-family: 'SF Mono', monospace; font-size: 12px;" oninput="schedulePreview()"></textarea>
+
+        <div class="input-row" style="margin-bottom:10px;">
+          <label>每封间隔（秒）：</label>
+          <input type="number" id="throttleInput" value="3" min="0" max="60" step="0.5" style="width:80px;">
+          <span style="color:var(--text2); font-size:11px;">默认 3 秒，避开 SMTP 限速</span>
+        </div>
+
+        <div class="btn-row">
+          <button class="btn btn-ghost btn-sm" onclick="polishEmail(this)" id="polishBtn">✨ AI 润色</button>
+          <button class="btn btn-ghost btn-sm hidden" onclick="undoPolish()" id="undoBtn">↶ 撤销润色</button>
+          <button class="btn btn-accent btn-sm" onclick="confirmAndSend()" id="sendBtn">发送给 <span id="sendCount">0</span> 人</button>
+        </div>
+
+        <div id="jobBox" style="margin-top:12px;"></div>
+      </div>
+
+      <!-- RIGHT: live preview -->
+      <div style="padding:18px 22px; overflow-y:auto; background:var(--bg);">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
+          <h3 style="font-size:13px; font-weight:600; margin:0;">实时预览</h3>
+          <span style="color:var(--text2); font-size:11px;">变量已替换为收件人真实信息</span>
+          <span style="flex:1;"></span>
+          <button class="btn btn-ghost btn-sm" id="prevPreviewBtn" onclick="cyclePreview(-1)" style="padding:2px 8px;">◀</button>
+          <span id="previewIndex" style="font-size:11px; color:var(--text2); min-width:60px; text-align:center;">— / —</span>
+          <button class="btn btn-ghost btn-sm" id="nextPreviewBtn" onclick="cyclePreview(1)" style="padding:2px 8px;">▶</button>
+        </div>
+        <div id="previewBox" style="font-size:12px;"></div>
+      </div>
+
+    </div>
+
+  </div>
+</div>
+{% endraw %}
+
+<!-- Handles drawer (per-person handle editor) -->
+<div id="handlesDrawer" class="hidden">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 14px;">
+    <div>
+      <h2 style="font-size:16px;">平台账号</h2>
+      <div id="handlesDrawerSubtitle" style="font-size:12px; color:var(--text2); margin-top:2px;"></div>
+    </div>
+    <button class="btn btn-ghost btn-sm" onclick="closeHandlesDrawer()">✕ 关闭</button>
+  </div>
+  <div id="handlesDrawerBody"></div>
+</div>
+
+<style>
+.crm-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.crm-table th { text-align: left; padding: 8px 10px; color: var(--text2); font-weight: 500; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--surface); z-index: 1; }
+.crm-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.crm-table tr:hover td { background: var(--surface2); }
+
+/* 「操作」列 sticky 在右边，横滚时永远跟着你（不用滑到最右才能点「不适合」）。
+   要给它一个不透明背景 + z-index + 左侧细边/阴影，否则会跟邻列叠在一起。 */
+.crm-table th.action-col,
+.crm-table td.action-col {
+  position: sticky;
+  right: 0;
+  background: var(--surface);
+  z-index: 2;
+  box-shadow: -6px 0 12px -6px rgba(0,0,0,.15);
+  border-left: 1px solid var(--border);
+}
+.crm-table tr:hover td.action-col { background: var(--surface2); }
+/* row 高亮（拒绝行）时也跟着变 */
+.crm-table tr[style*="--red-dim"] td.action-col { background: var(--red-dim); }
+.crm-table .name { font-weight: 600; color: var(--text); }
+.crm-table .email { color: var(--text2); font-family: 'SF Mono', monospace; font-size: 11px; }
+.crm-table .handles { display: flex; flex-wrap: wrap; gap: 3px; }
+.crm-table .handle-chip { font-size: 10px; padding: 1px 6px; border-radius: 8px; background: var(--surface2); color: var(--text2); }
+.crm-table .handle-chip.instagram { background: var(--pink-dim); color: var(--pink); }
+.crm-table .handle-chip.x { background: var(--blue-dim); color: var(--blue); }
+.crm-table .handle-chip.tiktok { background: var(--accent-dim); color: var(--accent); }
+.crm-table .btn-handles { font-size: 11px; padding: 2px 8px; border-radius: 6px; background: transparent; color: var(--text2); border: 1px dashed var(--border); cursor: pointer; }
+.crm-table .btn-handles:hover { border-color: var(--accent); color: var(--accent); }
+#handlesDrawer { position: fixed; top: 0; right: 0; bottom: 0; width: 440px; background: var(--surface); border-left: 1px solid var(--border); padding: 20px; overflow-y: auto; z-index: 200; box-shadow: -4px 0 12px rgba(0,0,0,.3); }
+#handlesDrawer .h-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: var(--surface2); border-radius: 8px; margin-bottom: 6px; font-size: 12px; }
+#handlesDrawer .h-row .ph { font-size: 10px; font-weight: 600; text-transform: uppercase; padding: 1px 6px; border-radius: 6px; }
+#handlesDrawer .h-row .ph.instagram { background: var(--pink-dim); color: var(--pink); }
+#handlesDrawer .h-row .ph.x { background: var(--blue-dim); color: var(--blue); }
+#handlesDrawer .h-row .ph.tiktok { background: var(--accent-dim); color: var(--accent); }
+#handlesDrawer .h-row .uname { flex: 1; font-family: 'SF Mono', monospace; }
+#handlesDrawer .h-row .meta { font-size: 10px; color: var(--text2); }
+#handlesDrawer .h-row .placeholder { color: var(--orange); font-size: 10px; }
+#handlesDrawer .h-row .x-del { padding: 2px 8px; font-size: 11px; background: transparent; color: var(--text2); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
+#handlesDrawer .h-row .x-del:hover { border-color: var(--red); color: var(--red); }
+#handlesDrawer .add-box { background: var(--surface2); border-radius: 8px; padding: 12px; margin-top: 14px; }
+#handlesDrawer .add-box select, #handlesDrawer .add-box input[type=text] { padding: 6px 10px; font-size: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; color: var(--text); }
+#handlesDrawer .add-box label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text2); }
+.filter-label { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text2); white-space: nowrap; }
+.filter-label select { padding: 5px 8px; font-size: 12px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); }
+.filter-label select:focus { outline: none; border-color: var(--accent); }
+.crm-table input, .crm-table select { padding: 3px 6px; font-size: 11px; background: var(--surface2); border: 1px solid var(--border); border-radius: 5px; color: var(--text); width: 100%; }
+.crm-table .name-input { font-weight: 600; color: var(--text); }
+.crm-table .notes-input { color: var(--text2); }
+.crm-table .email-input { font-family: 'SF Mono', monospace; font-size: 11px; color: var(--text2); }
+.crm-table .name-display { display: inline-block; font-weight: 600; color: var(--text); padding: 4px 6px; border-radius: 5px; cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: text; }
+.crm-table .email-display { display: inline-block; font-family: 'SF Mono', monospace; font-size: 11px; color: var(--text2); padding: 4px 6px; border-radius: 5px; cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: text; }
+.crm-table .name-display:hover, .crm-table .email-display:hover { background: var(--surface2); }
+.crm-table .placeholder-txt { color: var(--text2); opacity: .55; font-weight: 400; }
+.crm-table input.dirty, .crm-table select.dirty { border-color: var(--orange); }
+.crm-table .relative-time { color: var(--text2); white-space: nowrap; }
+.crm-table .never { color: var(--text2); opacity: .5; }
+.crm-table .btn-contact { padding: 3px 9px; font-size: 11px; background: var(--green-dim); color: var(--green); border: 1px solid transparent; border-radius: 6px; cursor: pointer; text-decoration: none; }
+.crm-table .btn-contact:hover { border-color: var(--green); }
+.crm-table .btn-hydrate { padding: 3px 7px; font-size: 11px; background: var(--blue-dim); color: var(--blue); border: 1px solid transparent; border-radius: 6px; cursor: pointer; }
+.crm-table .btn-hydrate:hover:not(:disabled) { border-color: var(--blue); }
+.crm-table .btn-hydrate:disabled { opacity: .6; cursor: wait; }
+@keyframes spin360 { to { transform: rotate(360deg); } }
+.crm-table .btn-hydrate.spinning { animation: spin360 .8s linear infinite; display: inline-block; }
+.notes-cell { max-width: 200px; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.notes-cell:hover { white-space: normal; overflow: visible; }
+</style>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const STANDARD_STATUS = ['待联系', '已联系', '已回复', '已放弃', '已成交', '主动来找'];
+function statusOptionsFor(currentStatus) {
+  // If row's current status is non-standard (legacy/dirty source data), prepend
+  // it as an "(原)" option so the select still renders the actual value.
+  if (currentStatus && !STANDARD_STATUS.includes(currentStatus)) {
+    return [[currentStatus, currentStatus + ' (原)'], ...STANDARD_STATUS.map(s => [s, s])];
+  }
+  return STANDARD_STATUS.map(s => [s, s]);
+}
+
+// 合作强度 (intent) — 4 enum values + a blank "(未评估)". staff sets these
+// based on customer signal during outreach so admin can prioritise follow-up.
+const INTENT_VALUES = ['强度高', '强度中', '强度低', '无意愿'];
+function intentOptionsHtml(current) {
+  const cur = current || '';
+  const blank = `<option value="" ${cur === '' ? 'selected' : ''}>—</option>`;
+  return blank + INTENT_VALUES.map(v =>
+    `<option value="${v}" ${v === cur ? 'selected' : ''}>${v}</option>`
+  ).join('');
+}
+const PAGE_SIZE = 100;
+let _t = null;
+let _offset = 0;
+
+// Filter changes (status, platform, email, order, assignee, include-rejected,
+// search text) should always jump back to page 1 — staying on a deep page
+// while the filter narrows the result set leads to "1701-61 / 共 61 人 · 没有
+// 匹配的客户" empty views (caught 2026-06-03 when 待联系 → 已联系 left the
+// offset at 1700 against a 61-person result).
+function reloadFiltered() { _offset = 0; loadList(); }
+let _total = 0;
+
+function debouncedLoad() { clearTimeout(_t); _t = setTimeout(() => { _offset = 0; loadList(); }, 300); }
+
+function relTime(ts) {
+  if (!ts) return '<span class="never">从未</span>';
+  const d = (Date.now()/1000) - ts;
+  if (d < 3600) return Math.floor(d/60) + ' 分钟前';
+  if (d < 86400) return Math.floor(d/3600) + ' 小时前';
+  if (d < 86400*30) return Math.floor(d/86400) + ' 天前';
+  if (d < 86400*365) return Math.floor(d/86400/30) + ' 个月前';
+  return Math.floor(d/86400/365) + ' 年前';
+}
+
+function buildMailto(p) {
+  if (!p.email) return null;
+  const name = p.full_name || '';
+  const subject = encodeURIComponent('Hi' + (name ? ' ' + name : ''));
+  const body = encodeURIComponent(`Hi${name ? ' ' + name : ''},\n\n`);
+  return `mailto:${p.email}?subject=${subject}&body=${body}`;
+}
+
+// Track the row a user is "currently working on" so we can restore focus +
+// scroll position across loadList() reloads (which happen after every edit:
+// reject / status change / email fill / etc). Without this, every click on
+// a row's action button reloads the table from scratch, the row's position
+// may shift (especially with the default last_contacted DESC sort), and the
+// reviewer has to manually find where they were.
+let _activeRowPid = null;
+
+// Capture the "currently focused" row before a destructive action. Called
+// from the per-row action handlers (onReject / onChange / etc) just before
+// they hit the API.
+function rememberActiveRow(pid) {
+  _activeRowPid = +pid || null;
+}
+
+async function loadList() {
+  const q = document.getElementById('qInput').value.trim();
+  const status = document.getElementById('statusSel').value;
+  const has_platform = document.getElementById('platSel').value;
+  const has_email = document.getElementById('emailSel').value;
+  const order = document.getElementById('orderSel').value;
+  const params = new URLSearchParams({
+    q, status, has_platform, has_email, order,
+    limit: PAGE_SIZE, offset: _offset,
+  });
+  const assignSel = document.getElementById('assignSel');
+  if (assignSel && assignSel.value) params.set('assigned_user_id', assignSel.value);
+  if (document.getElementById('includeRejected')?.checked) params.set('include_rejected', '1');
+
+  // Snapshot the focus/scroll BEFORE rebuilding the table.
+  const wrap = document.getElementById('tableWrap');
+  const prevScrollTop = wrap ? wrap.scrollTop : 0;
+  const prevWindowY = window.scrollY;
+
+  document.getElementById('tableWrap').innerHTML = '<div class="empty">加载中…</div>';
+  try {
+    const r = await fetch('/api/people/list?' + params.toString());
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    _total = d.total || 0;
+    renderTable(d.people || []);
+    updateMeta();
+    // Restore scroll + active row visibility.
+    requestAnimationFrame(() => {
+      const w = document.getElementById('tableWrap');
+      if (w) w.scrollTop = prevScrollTop;
+      window.scrollTo(0, prevWindowY);
+      if (_activeRowPid != null) {
+        const tr = document.querySelector(`tr[data-pid="${_activeRowPid}"]`);
+        if (tr) {
+          // Flash highlight so reviewer sees where they were
+          tr.style.outline = '2px solid var(--accent)';
+          tr.style.outlineOffset = '-2px';
+          setTimeout(() => { tr.style.outline = ''; tr.style.outlineOffset = ''; }, 1500);
+          // If the row is offscreen (e.g. sort changed), scroll back to it
+          const rect = tr.getBoundingClientRect();
+          if (rect.top < 80 || rect.bottom > window.innerHeight - 40) {
+            tr.scrollIntoView({block: 'center', behavior: 'instant'});
+          }
+        }
+      }
+    });
+  } catch (e) {
+    document.getElementById('tableWrap').innerHTML = `<div class="error-msg">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function updateMeta() {
+  const start = _total ? _offset + 1 : 0;
+  const end = Math.min(_offset + PAGE_SIZE, _total);
+  document.getElementById('resultMeta').textContent = `${start}-${end} / 共 ${_total.toLocaleString()} 人`;
+  document.getElementById('prevBtn').disabled = _offset <= 0;
+  document.getElementById('nextBtn').disabled = end >= _total;
+}
+
+function prevPage() { _offset = Math.max(0, _offset - PAGE_SIZE); loadList(); }
+function nextPage() { _offset += PAGE_SIZE; loadList(); }
+
+const _selected = new Set();
+
+function renderTable(people) {
+  if (!people.length) {
+    document.getElementById('tableWrap').innerHTML = '<div class="empty">没有匹配的客户。</div>';
+    updateSelMeta();
+    return;
+  }
+  const isAdmin = window.CURRENT_USER && window.CURRENT_USER.role === 'admin';
+  const ownerHeader = isAdmin
+    ? `<th style="min-width:140px;">分配给</th>`
+    : `<th style="min-width:110px;">负责人</th>`;
+  const html = `
+    <div style="overflow-x: auto;">
+    <table class="crm-table">
+      <thead>
+        <tr>
+          <th style="width:32px;"><input type="checkbox" id="selAll" onclick="togglePage(this.checked)"></th>
+          <th style="min-width:140px;">姓名</th>
+          <th style="min-width:200px;">邮箱</th>
+          <th style="min-width:130px;">关联账号</th>
+          <th style="min-width:80px;">粉丝</th>
+          <th style="min-width:110px;">状态</th>
+          <th style="min-width:110px;">合作强度</th>
+          <th style="min-width:130px;">标签</th>
+          ${ownerHeader}
+          <th style="min-width:90px;">最近联系</th>
+          <th style="min-width:90px;" title="入库时间（抓取/导入到 Scout 的时刻）。要找昨天的新客户，把上方「排序」切到「创建时间（新→旧）」。">入库时间</th>
+          <th style="min-width:200px;">备注</th>
+          <th class="action-col" style="min-width:140px;">操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${people.map(p => renderRow(p)).join('')}
+      </tbody>
+    </table>
+    </div>`;
+  document.getElementById('tableWrap').innerHTML = html;
+  // Restore checkbox state
+  document.querySelectorAll('.row-cb').forEach(cb => {
+    cb.checked = _selected.has(+cb.dataset.pid);
+  });
+  updateSelMeta();
+}
+
+function toggleRow(pid, on) {
+  if (on) _selected.add(pid); else _selected.delete(pid);
+  updateSelMeta();
+}
+
+function togglePage(on) {
+  document.querySelectorAll('.row-cb').forEach(cb => {
+    cb.checked = on;
+    const pid = +cb.dataset.pid;
+    if (on) _selected.add(pid); else _selected.delete(pid);
+  });
+  updateSelMeta();
+}
+
+function updateSelMeta() {
+  const n = _selected.size;
+  document.getElementById('selMeta').textContent = n ? `已选 ${n} 人` : '';
+  const btn = document.getElementById('bulkBtn');
+  btn.disabled = n === 0;
+  btn.textContent = n ? `群发邮件 (${n})` : '群发邮件';
+  document.getElementById('clearSelBtn').disabled = n === 0;
+}
+
+function clearSelection() {
+  _selected.clear();
+  document.querySelectorAll('.row-cb').forEach(cb => cb.checked = false);
+  const sa = document.getElementById('selAll');
+  if (sa) sa.checked = false;
+  updateSelMeta();
+}
+
+async function selectAllMatching() {
+  const btn = document.getElementById('selAllMatchingBtn');
+  btn.disabled = true;
+  btn.textContent = '加载中…';
+  try {
+    const params = new URLSearchParams({
+      q: document.getElementById('qInput').value.trim(),
+      status: document.getElementById('statusSel').value,
+      has_platform: document.getElementById('platSel').value,
+      has_email: document.getElementById('emailSel').value,
+      order: document.getElementById('orderSel').value,
+    });
+    const r = await fetch('/api/people/match_ids?' + params.toString());
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    _selected.clear();
+    for (const id of (d.ids || [])) _selected.add(id);
+    // Update checkboxes on current page
+    document.querySelectorAll('.row-cb').forEach(cb => {
+      cb.checked = _selected.has(+cb.dataset.pid);
+    });
+    const dropped = (d.total_matching || 0) - (d.with_email || 0);
+    const note = dropped > 0 ? `（已自动剔除 ${dropped} 个无邮箱的）` : '';
+    alert(`已选中匹配的 ${d.with_email} 人 ${note}`);
+    updateSelMeta();
+  } catch (e) {
+    alert('全选失败：' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '全选匹配的';
+  }
+}
+
+function renderRow(p) {
+  const isAdmin = window.CURRENT_USER && window.CURRENT_USER.role === 'admin';
+  const isRejected = p.status === '不适合';
+  const tagsStr = (p.tags || []).join(', ');
+  const handles = (p.handles || []).map(h =>
+    `<span class="handle-chip ${h.platform}" title="${h.platform}">@${escapeHtml(h.username)}</span>`
+  ).join('');
+  const statusOpts = statusOptionsFor(p.status).map(([v, l]) => `<option value="${v}" ${v === p.status ? 'selected' : ''}>${l}</option>`).join('');
+  const mailto = buildMailto(p);
+  const contactBtn = mailto
+    ? `<a class="btn-contact" href="${mailto}" onclick="onContact(${p.id})">✉</a>`
+    : `<span style="color:var(--text2); font-size:11px;">—</span>`;
+  const hydrateBtn = (p.handles && p.handles.length > 0)
+    ? `<button class="btn-hydrate" onclick="onHydrate(${p.id}, this)" title="从平台拉取真实数据（每个 handle ~$0.001-0.002）">🔄</button>`
+    : '';
+  const rejectBtn = isRejected
+    ? `<button class="btn btn-ghost btn-sm" style="padding:3px 8px;font-size:11px;" onclick="onUnreject(${p.id})">取消标记</button>`
+    : `<button class="btn btn-ghost btn-sm" style="padding:3px 8px;font-size:11px;" onclick="onReject(${p.id})" title="标记为不适合，未来 AI 发现会避开类似的人">不适合</button>`;
+  // 姓名 + 邮箱：只读展示，点格子或抽屉里的"编辑"按钮才能改
+  // （之前是 inline input，复制粘贴时容易误改触发 onblur 保存）
+  const nameTxt = (p.full_name || '').trim();
+  const emailTxt = (p.email || '').trim();
+  const nameCell = `<span class="name-display" onclick="openHandlesDrawer(${p.id})" title="点开抽屉编辑">${nameTxt ? escapeHtml(nameTxt) : '<span class="placeholder-txt">(未命名)</span>'}</span>`;
+  const emailCell = `<span class="email-display" onclick="openHandlesDrawer(${p.id})" title="点开抽屉编辑">${emailTxt ? escapeHtml(emailTxt) : '<span class="placeholder-txt">点此添加邮箱</span>'}</span>`;
+  // Owner column: admin gets dropdown; staff gets read-only assignee badge.
+  let ownerCell;
+  if (isAdmin) {
+    const opts = ['<option value="">— 未分配 —</option>']
+      .concat(window.STAFF_LIST.map(u =>
+        `<option value="${u.id}" ${p.assigned_user_id === u.id ? 'selected' : ''}>${escapeHtml(u.display_name || u.username)} (${u.role})</option>`
+      )).join('');
+    const legacy = (!p.assigned_user_id && p.owner)
+      ? `<div style="font-size:10px;color:var(--text2);margin-top:2px;">遗留 owner: ${escapeHtml(p.owner)}</div>` : '';
+    ownerCell = `<select onchange="onChange(${p.id}, 'assigned_user_id', this)">${opts}</select>${legacy}`;
+  } else {
+    ownerCell = `<span style="font-size:11px;color:var(--text2);">${escapeHtml(p.assigned_display_name || p.assigned_username || '—')}</span>`;
+  }
+  const rejectedRowStyle = isRejected
+    ? ' style="background: var(--red-dim);"'
+    : '';
+  return `
+    <tr data-pid="${p.id}"${rejectedRowStyle}>
+      <td><input type="checkbox" class="row-cb" data-pid="${p.id}" onclick="toggleRow(${p.id}, this.checked)"></td>
+      <td>${nameCell}</td>
+      <td>${emailCell}</td>
+      <td><div class="handles">${handles}<button class="btn-handles" onclick="openHandlesDrawer(${p.id})" title="管理这个客户的平台账号">${(p.handles && p.handles.length) ? '编辑' : '+ 添加'}</button></div></td>
+      <td><span style="font-size:12px; color:var(--text); font-weight:600;">${p.max_followers != null ? fmt(p.max_followers) : '<span style="color:var(--text2); font-weight:400;">—</span>'}</span></td>
+      <td><select onchange="onChange(${p.id}, 'status', this)">${statusOpts}</select></td>
+      <td><select onchange="onChange(${p.id}, 'intent', this)">${intentOptionsHtml(p.intent)}</select></td>
+      <td><input type="text" value="${escapeHtml(tagsStr)}" placeholder="逗号分隔" onblur="onChange(${p.id}, 'tags', this)"></td>
+      <td>${ownerCell}</td>
+      <td class="relative-time">${relTime(p.last_contacted_at)}</td>
+      <td class="relative-time">${relTime(p.created_at)}</td>
+      <td><input type="text" class="notes-input" value="${escapeHtml(p.notes || '')}" placeholder="点此添加备注" onblur="onChange(${p.id}, 'notes', this)"></td>
+      <td class="action-col"><div style="display:flex; gap:4px; align-items:center; flex-wrap:wrap;">${contactBtn}${hydrateBtn}${rejectBtn}</div></td>
+    </tr>`;
+}
+
+async function onReject(pid) {
+  rememberActiveRow(pid);
+  const reason = prompt('请简单说明不适合的原因（可选）：') ?? null;
+  // prompt cancel returns null and we use that as "abort".
+  if (reason === null) return;
+  const r = await fetch(`/api/people/${pid}/reject`, {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({reason}),
+  });
+  if (!r.ok) { const d = await r.json(); alert(d.error === 'forbidden' ? '该客户已不在你的分配下，列表将刷新' : ('失败: ' + (d.error || ''))); }
+  loadList();
+}
+
+async function onUnreject(pid) {
+  rememberActiveRow(pid);
+  if (!confirm('取消"不适合"标记？该客户会重新出现在常规列表，AI 发现也不再避开他。')) return;
+  const r = await fetch(`/api/people/${pid}/unreject`, {method: 'POST'});
+  if (!r.ok) { const d = await r.json(); alert('失败: ' + (d.error || '')); }
+  loadList();
+}
+
+async function bulkAssign() {
+  const ids = Array.from(_selected);
+  if (!ids.length) return;
+  const sel = document.getElementById('bulkAssignSel');
+  const target = sel.value === '' ? null : Number(sel.value);
+  const targetLabel = target == null ? '未分配池' : sel.options[sel.selectedIndex].text;
+  if (!confirm(`确定把 ${ids.length} 个客户分配给「${targetLabel}」？`)) return;
+  const r = await fetch('/api/people/bulk_assign', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ids, assigned_user_id: target}),
+  });
+  const d = await r.json();
+  if (!r.ok) { alert('失败: ' + (d.error || '')); return; }
+  alert(`已分配 ${d.updated} 人`);
+  clearSelection();
+  loadList();
+}
+
+async function onChange(pid, field, el) {
+  rememberActiveRow(pid);
+  let value = el.value;
+  if (field === 'tags') value = value.split(',').map(s => s.trim()).filter(Boolean);
+  if (field === 'assigned_user_id') value = value === '' ? null : Number(value);
+  if (field === 'intent') value = value === '' ? null : value;
+  el.classList.add('dirty');
+  try {
+    const r = await fetch(`/api/db/person/${pid}`, {
+      method: 'PATCH', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({[field]: value}),
+    });
+    const d = await r.json();
+    if (r.status === 403) {
+      el.style.borderColor = 'var(--red)';
+      alert('该客户已不在你的分配下（可能管理员刚改派），列表将刷新。');
+      loadList();
+      return;
+    }
+    if (r.status === 400 && d.error === 'forbidden_field') {
+      el.style.borderColor = 'var(--red)';
+      alert(`该字段不允许员工修改：${d.field}${d.detail ? '\n' + d.detail : ''}`);
+      return;
+    }
+    if (!r.ok || d.error) {
+      const msg = d.detail || d.error || `HTTP ${r.status}`;
+      throw new Error(msg);
+    }
+    el.classList.remove('dirty');
+    el.style.borderColor = 'var(--green)';
+    setTimeout(() => { el.style.borderColor = ''; }, 800);
+  } catch (e) {
+    el.style.borderColor = 'var(--red)';
+    alert('保存失败：' + e.message);
+  }
+}
+
+async function onHydrate(pid, btn) {
+  btn.disabled = true;
+  btn.classList.add('spinning');
+  try {
+    const r = await fetch(`/api/people/${pid}/hydrate`, {method: 'POST'});
+    const d = await r.json();
+    if (!r.ok) {
+      alert((d.detail || d.error || '失败') + '');
+      return;
+    }
+    const okCount = d.ok || 0;
+    const total = d.total || 0;
+    const fails = (d.results || []).filter(x => !x.ok);
+    if (okCount === total) {
+      // All succeeded — flash row green and reload to show fresh follower counts
+      const tr = btn.closest('tr');
+      if (tr) {
+        tr.style.transition = 'background-color .8s';
+        tr.style.backgroundColor = 'var(--green-dim)';
+        setTimeout(() => { tr.style.backgroundColor = ''; }, 1200);
+      }
+      setTimeout(loadList, 300);
+    } else {
+      const failMsg = fails.map(f => `@${f.username} (${f.platform}): ${f.error}`).join('\n');
+      alert(`部分成功：${okCount}/${total}\n\n失败：\n${failMsg}`);
+      loadList();
+    }
+  } catch (e) {
+    alert('请求失败：' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.classList.remove('spinning');
+  }
+}
+
+async function onContact(pid) {
+  // mailto: navigates the browser; do the API call but don't block
+  fetch(`/api/people/${pid}/contact`, {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({status: '已联系'}),
+  }).then(() => {
+    const tr = document.querySelector(`tr[data-pid="${pid}"]`);
+    if (tr) {
+      tr.querySelector('.relative-time').textContent = '刚刚';
+      const sel = tr.querySelector('select');
+      if (sel) sel.value = '已联系';
+    }
+  });
+}
+
+async function openAddCustomer() {
+  // Reset form
+  for (const id of ['addName','addEmail','addOwner','addIG','addX','addTT','addTags','addNotes']) {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  }
+  document.getElementById('addStatus').value = '主动来找';
+  document.getElementById('addStatus2').textContent = '';
+  document.getElementById('addModal').classList.remove('hidden');
+  document.getElementById('addName').focus();
+}
+
+function closeAddCustomer() {
+  document.getElementById('addModal').classList.add('hidden');
+}
+
+function onAddBackdrop(e) {
+  if (e.target.id === 'addModal') closeAddCustomer();
+}
+
+// ---------- handles drawer ----------
+let _handlesDrawerPid = null;
+
+function closeHandlesDrawer() {
+  document.getElementById('handlesDrawer').classList.add('hidden');
+  _handlesDrawerPid = null;
+}
+
+async function openHandlesDrawer(pid) {
+  _handlesDrawerPid = pid;
+  document.getElementById('handlesDrawer').classList.remove('hidden');
+  document.getElementById('handlesDrawerBody').innerHTML = '<div class="empty">加载中…</div>';
+  document.getElementById('handlesDrawerSubtitle').textContent = `客户 ID ${pid}`;
+  await renderHandlesDrawer();
+}
+
+async function renderHandlesDrawer() {
+  const pid = _handlesDrawerPid;
+  if (pid == null) return;
+  let person = null;
+  try {
+    const r = await fetch(`/api/people/${pid}`);
+    const d = await r.json();
+    person = d.person;
+  } catch (e) {}
+  if (!person) {
+    document.getElementById('handlesDrawerBody').innerHTML = '<div class="error-msg">无法加载客户信息</div>';
+    return;
+  }
+  document.getElementById('handlesDrawerSubtitle').textContent = `客户 ID ${person.id}`;
+
+  const handles = person.handles || [];
+  const handlesHtml = handles.length
+    ? handles.map(h => {
+        const isPlaceholder = (h.platform_user_id || '').startsWith('import:');
+        return `<div class="h-row">
+          <span class="ph ${h.platform}">${h.platform}</span>
+          <span class="uname">@${escapeHtml(h.username)}</span>
+          ${isPlaceholder ? '<span class="placeholder">占位</span>' : `<span class="meta">${fmt(h.follower_count)} 粉丝</span>`}
+          <button class="x-del" onclick="onDeleteHandle(${h.id}, '${escapeHtml(h.username)}')">✕ 删除</button>
+        </div>`;
+      }).join('')
+    : '<div class="empty">还没有挂任何平台账号</div>';
+
+  const isAdmin = window.CURRENT_USER && window.CURRENT_USER.role === 'admin';
+  const dangerBtn = isAdmin
+    ? `<div style="margin-top:24px; padding-top:14px; border-top: 1px dashed var(--border);">
+         <button class="btn btn-ghost btn-sm" style="color:var(--red); border-color:var(--red);"
+                 onclick="onDeletePerson(${person.id}, ${JSON.stringify(person.full_name || '').replace(/"/g, '&quot;')})">
+           🗑 删除客户（永久，不可恢复）
+         </button>
+         <div style="font-size:11px; color:var(--text2); margin-top:6px;">
+           只在录入错了 / 测试残留时用。想"以后避开"请走『不适合』按钮。
+         </div>
+       </div>`
+    : '';
+  document.getElementById('handlesDrawerBody').innerHTML = `
+    <div class="add-box" style="margin-bottom:14px;">
+      <div style="font-size:13px; font-weight:600; margin-bottom:8px;">基础信息（抓回来的常常不准，可直接改）</div>
+      <label style="display:block; margin-bottom:8px; font-size:12px; color:var(--text2);">
+        姓名
+        <input type="text" id="drawerName" value="${escapeHtml(person.full_name || '')}"
+               placeholder="(未命名)" style="margin-top:4px; width:100%;"
+               onblur="onDrawerFieldBlur('full_name', this)">
+      </label>
+      <label style="display:block; font-size:12px; color:var(--text2);">
+        邮箱
+        <input type="text" id="drawerEmail" value="${escapeHtml(person.email || '')}"
+               placeholder="someone@example.com" style="margin-top:4px; width:100%;"
+               onblur="onDrawerFieldBlur('email', this)">
+      </label>
+      <div id="drawerFieldMsg" style="font-size:11px; margin-top:6px; min-height:14px;"></div>
+    </div>
+    ${handlesHtml}
+
+    <!-- Follow-up timeline + reminder controls -->
+    <div class="add-box" style="margin-top:14px;">
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
+        <div style="font-size:13px; font-weight:600;">跟进记录</div>
+        <span id="followupCount" style="color:var(--text2); font-size:11px;"></span>
+      </div>
+      <div style="display:flex; gap:6px; margin-bottom:8px;">
+        <input type="text" id="followupInput" placeholder="例：3 月 18 日电话沟通，对方对包邮政策最在意…"
+               style="flex:1;" onkeydown="if(event.key==='Enter') onAddFollowup()">
+        <button class="btn btn-accent btn-sm" onclick="onAddFollowup()">＋ 添加</button>
+      </div>
+      <div id="followupList" style="font-size:12px; max-height:200px; overflow-y:auto;"></div>
+    </div>
+
+    <div class="add-box" style="margin-top:10px;">
+      <div style="font-size:13px; font-weight:600; margin-bottom:8px;">设个提醒</div>
+      <div class="input-row" style="gap:6px;">
+        <input type="datetime-local" id="reminderAt" style="flex:0 0 200px;">
+        <input type="text" id="reminderContent" placeholder="例：跟进合作意向（可空）" style="flex:1;">
+        <button class="btn btn-accent btn-sm" onclick="onAddReminder()">设提醒</button>
+      </div>
+      <div id="reminderMsg" style="font-size:11px; color:var(--text2); margin-top:6px;"></div>
+      <div id="reminderList" style="font-size:12px; margin-top:8px;"></div>
+    </div>
+
+    <div class="add-box">
+      <div style="font-size:13px; font-weight:600; margin-bottom:8px;">添加新账号</div>
+      <div class="input-row" style="gap:8px;">
+        <select id="newHandlePlatform" style="width:120px;">
+          <option value="instagram">Instagram</option>
+          <option value="x">X (Twitter)</option>
+          <option value="tiktok">TikTok</option>
+        </select>
+        <input type="text" id="newHandleUser" placeholder="用户名（不带 @）" style="flex:1;">
+      </div>
+      <label style="margin-top:8px;">
+        <input type="checkbox" id="newHandleHydrate" checked> 立即抓取（走真 API，需消耗 token）
+      </label>
+      <div class="btn-row" style="margin-top:10px;">
+        <button class="btn btn-accent btn-sm" id="newHandleBtn" onclick="onAddHandle()">添加</button>
+        <span id="newHandleMsg" style="font-size:11px; color:var(--text2);"></span>
+      </div>
+    </div>
+    ${dangerBtn}
+  `;
+  // Fill the new follow-up / reminder panels asynchronously.
+  loadFollowups();
+  loadReminders();
+}
+
+async function onDeletePerson(pid, name) {
+  if (!confirm(`真的要永久删除客户「${name || '(未命名)'}」？\n\n这会一并删掉 TA 名下所有平台账号 + 历史，不可恢复。\n\n如果只是想"以后 AI 不要再发现 TA"，应该用『不适合』按钮（软标记，保留 bio embedding 用于负样本过滤）。`)) return;
+  try {
+    const r = await fetch(`/api/people/${pid}`, {method: 'DELETE'});
+    const d = await r.json();
+    if (!r.ok) {
+      alert('删除失败：' + (d.detail || d.error || ''));
+      return;
+    }
+    closeHandlesDrawer();
+    loadList();
+  } catch (e) {
+    alert('删除失败：' + e.message);
+  }
+}
+
+async function onAddHandle() {
+  const pid = _handlesDrawerPid;
+  if (pid == null) return;
+  const platform = document.getElementById('newHandlePlatform').value;
+  const handle = document.getElementById('newHandleUser').value.trim().replace(/^@/, '');
+  const hydrate = document.getElementById('newHandleHydrate').checked;
+  const msg = document.getElementById('newHandleMsg');
+  if (!handle) { msg.textContent = '请填写用户名'; msg.style.color = 'var(--red)'; return; }
+
+  const btn = document.getElementById('newHandleBtn');
+  btn.disabled = true;
+  msg.textContent = hydrate ? '抓取中（3-10 秒）…' : '保存中…';
+  msg.style.color = 'var(--text2)';
+
+  try {
+    let r, d;
+    if (hydrate) {
+      r = await fetch('/api/db/import_handle', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({platform, handle, person_id: pid}),
+      });
+    } else {
+      r = await fetch(`/api/people/${pid}/handles`, {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({platform, handle}),
+      });
+    }
+    d = await r.json();
+    if (!r.ok) {
+      if (d.error === 'already_attached') {
+        msg.innerHTML = `<span style="color:var(--red)">@${escapeHtml(handle)} 已经在这个客户名下了</span>`;
+      } else if (d.error === 'handle_exists') {
+        const who = d.existing_full_name || d.existing_email || ('id=' + (d.existing_person_id || '?'));
+        _lastConflictWho = who;
+        const jumpBtn = d.existing_person_id
+          ? ` <button type="button" class="btn btn-ghost btn-sm" style="padding:2px 8px;font-size:11px;margin-left:4px;" onclick="openHandlesDrawer(${d.existing_person_id})">→ 查看</button>`
+          : '';
+        const mergeBtn = d.existing_person_id
+          ? ` <button type="button" class="btn btn-accent btn-sm" style="padding:2px 8px;font-size:11px;margin-left:4px;" onclick="mergeFromConflict(${d.existing_person_id})">⮞ 合并到当前</button>`
+          : '';
+        msg.innerHTML = `<span style="color:var(--red)">@${escapeHtml(handle)} 已属于「${escapeHtml(who)}」</span>${jumpBtn}${mergeBtn}`;
+      } else if (d.error === 'platform_fetch_failed') {
+        msg.innerHTML = `<span style="color:var(--red)">抓取失败：${escapeHtml(d.detail || '')}</span>`;
+      } else {
+        msg.innerHTML = `<span style="color:var(--red)">${escapeHtml(d.detail || d.error || '失败')}</span>`;
+      }
+      return;
+    }
+    msg.innerHTML = '<span style="color:var(--green)">✓ 已添加</span>';
+    document.getElementById('newHandleUser').value = '';
+    await renderHandlesDrawer();
+    loadList();  // reflect new chip in the table
+  } catch (e) {
+    msg.innerHTML = `<span style="color:var(--red)">${escapeHtml(e.message)}</span>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// Name of the person a just-failed add-handle collided with — used to build a
+// readable confirm() before merging. Set in onAddHandle's handle_exists branch.
+let _lastConflictWho = '';
+
+// Fold the conflicting person (source) into the card currently open (target).
+async function mergeFromConflict(sourceId) {
+  const target = _handlesDrawerPid;
+  if (target == null || sourceId == null || Number(target) === Number(sourceId)) return;
+  const who = _lastConflictWho || '对方客户';
+  if (!confirm(`把「${who}」合并进当前客户？\n\nTA 名下的账号、跟进记录、提醒都会并到当前客户，然后删除「${who}」。\n\n此操作不可撤销。`)) return;
+  const msg = document.getElementById('newHandleMsg');
+  msg.textContent = '合并中…'; msg.style.color = 'var(--text2)';
+  try {
+    const r = await fetch(`/api/people/${target}/merge/${sourceId}`, {method: 'POST'});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || d.error || `HTTP ${r.status}`);
+    msg.innerHTML = '<span style="color:var(--green)">✓ 已合并到当前客户</span>';
+    document.getElementById('newHandleUser').value = '';
+    await renderHandlesDrawer();
+    loadList();
+  } catch (e) {
+    msg.innerHTML = `<span style="color:var(--red)">合并失败：${escapeHtml(e.message)}</span>`;
+  }
+}
+
+// -------- Follow-up timeline (per-customer) --------
+async function loadFollowups() {
+  const pid = _handlesDrawerPid;
+  if (pid == null) return;
+  const listEl = document.getElementById('followupList');
+  if (!listEl) return;
+  try {
+    const r = await fetch(`/api/people/${pid}/followups`);
+    const d = await r.json();
+    const items = d.followups || [];
+    document.getElementById('followupCount').textContent =
+      items.length ? `共 ${items.length} 条` : '';
+    if (!items.length) {
+      listEl.innerHTML = '<div class="empty" style="padding:10px 0; color:var(--text2);">还没有跟进记录</div>';
+      return;
+    }
+    listEl.innerHTML = items.map(it => {
+      const who = it.actor_display_name || it.actor_username || '?';
+      const when = new Date(it.created_at * 1000).toLocaleString('zh-CN', {hour12: false});
+      return `
+        <div style="border-left:2px solid var(--accent); padding:6px 10px; margin-bottom:6px; background:var(--surface2); border-radius:0 6px 6px 0;">
+          <div style="display:flex; justify-content:space-between; color:var(--text2); font-size:11px;">
+            <span>${escapeHtml(who)} · ${escapeHtml(when)}</span>
+            <button class="btn-ghost" style="background:none; border:none; color:var(--text2); cursor:pointer; font-size:11px;"
+                    onclick="onDeleteFollowup(${it.id})">删</button>
+          </div>
+          <div style="white-space:pre-wrap; margin-top:2px;">${escapeHtml(it.content)}</div>
+        </div>`;
+    }).join('');
+  } catch (e) {
+    listEl.innerHTML = `<div style="color:var(--red); font-size:11px;">加载失败：${escapeHtml(e.message)}</div>`;
+  }
+}
+
+async function onAddFollowup() {
+  const pid = _handlesDrawerPid;
+  const inp = document.getElementById('followupInput');
+  const content = (inp.value || '').trim();
+  if (!content) return;
+  const r = await fetch(`/api/people/${pid}/followups`, {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({content}),
+  });
+  if (!r.ok) {
+    const d = await r.json();
+    alert('添加失败：' + (d.detail || d.error || ''));
+    return;
+  }
+  inp.value = '';
+  await loadFollowups();
+  loadList();  // refresh "最近联系" column
+}
+
+async function onDeleteFollowup(fid) {
+  if (!confirm('删除这条跟进记录？')) return;
+  const r = await fetch(`/api/people/followups/${fid}`, {method: 'DELETE'});
+  if (!r.ok) {
+    const d = await r.json();
+    alert('删除失败：' + (d.detail || d.error || ''));
+    return;
+  }
+  await loadFollowups();
+}
+
+// -------- Reminders (per-customer + global banner poll) --------
+async function loadReminders() {
+  const pid = _handlesDrawerPid;
+  if (pid == null) return;
+  const listEl = document.getElementById('reminderList');
+  if (!listEl) return;
+  try {
+    const r = await fetch(`/api/people/${pid}/reminders`);
+    const d = await r.json();
+    const items = (d.reminders || []).filter(it => !it.dismissed_at);
+    if (!items.length) {
+      listEl.innerHTML = '';
+      return;
+    }
+    listEl.innerHTML = '<div style="color:var(--text2); margin-bottom:4px;">未完成的提醒：</div>' + items.map(it => {
+      const when = new Date(it.remind_at * 1000).toLocaleString('zh-CN', {hour12: false});
+      const due = it.remind_at <= Math.floor(Date.now()/1000);
+      const color = due ? 'var(--orange)' : 'var(--text2)';
+      return `
+        <div style="padding:4px 8px; background:var(--surface2); border-radius:6px; margin-bottom:4px;">
+          <span style="color:${color};">${due ? '🔔 ' : '⏰ '}${escapeHtml(when)}</span>
+          ${it.content ? ' · ' + escapeHtml(it.content) : ''}
+          <button class="btn-ghost" style="background:none; border:none; color:var(--text2); cursor:pointer; font-size:11px; float:right;"
+                  onclick="onDismissReminder(${it.id})">完成</button>
+        </div>`;
+    }).join('');
+  } catch (e) {}
+}
+
+async function onAddReminder() {
+  const pid = _handlesDrawerPid;
+  const atRaw = document.getElementById('reminderAt').value;
+  const content = document.getElementById('reminderContent').value.trim();
+  const msg = document.getElementById('reminderMsg');
+  if (!atRaw) { msg.textContent = '先选个时间'; msg.style.color = 'var(--red)'; return; }
+  const remind_at = Math.floor(new Date(atRaw).getTime() / 1000);
+  const r = await fetch(`/api/people/${pid}/reminders`, {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({remind_at, content}),
+  });
+  if (!r.ok) {
+    const d = await r.json();
+    msg.textContent = '失败：' + (d.detail || d.error || '');
+    msg.style.color = 'var(--red)';
+    return;
+  }
+  msg.innerHTML = '<span style="color:var(--green)">✓ 已设置</span>';
+  document.getElementById('reminderAt').value = '';
+  document.getElementById('reminderContent').value = '';
+  await loadReminders();
+  // Trigger banner refresh next tick
+  setTimeout(pollDueReminders, 500);
+}
+
+async function onDismissReminder(rid) {
+  const r = await fetch(`/api/reminders/${rid}/dismiss`, {method: 'POST'});
+  if (!r.ok) { alert('失败'); return; }
+  await loadReminders();
+  pollDueReminders();
+}
+
+// -------- Global "due now" banner — polls every 30 s --------
+async function pollDueReminders() {
+  try {
+    const r = await fetch('/api/reminders/due');
+    if (!r.ok) return;
+    const d = await r.json();
+    const banner = document.getElementById('reminderBanner') || _createReminderBanner();
+    const items = d.reminders || [];
+    if (!items.length) { banner.style.display = 'none'; return; }
+    banner.style.display = 'block';
+    banner.innerHTML = items.map(it => {
+      const when = new Date(it.remind_at * 1000).toLocaleString('zh-CN', {hour12: false});
+      const name = it.person_name || ('客户 ' + it.person_id);
+      const note = it.content ? ' · ' + escapeHtml(it.content) : '';
+      return `
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span>🔔 提醒到了 (${escapeHtml(when)})：跟进 <b>${escapeHtml(name)}</b>${note}</span>
+          <button onclick="openHandlesDrawer(${it.person_id})" class="btn btn-ghost btn-sm" style="padding:2px 8px; font-size:11px;">打开客户</button>
+          <button onclick="onDismissReminder(${it.id})" class="btn btn-ghost btn-sm" style="padding:2px 8px; font-size:11px;">标记完成</button>
+        </div>`;
+    }).join('');
+  } catch (e) {}
+}
+function _createReminderBanner() {
+  const b = document.createElement('div');
+  b.id = 'reminderBanner';
+  b.style.cssText = 'position:sticky; top:0; z-index:150; background:var(--orange-dim, #6a3500); color:#fff; padding:10px 16px; font-size:12px; border-bottom:1px solid var(--border); display:none;';
+  document.body.insertBefore(b, document.body.firstChild);
+  return b;
+}
+// Boot the poll at script-load; refresh every 30s while the user is on the page.
+pollDueReminders();
+setInterval(pollDueReminders, 30000);
+
+async function onDrawerFieldBlur(field, el) {
+  const pid = _handlesDrawerPid;
+  if (pid == null) return;
+  const value = el.value.trim();
+  const msg = document.getElementById('drawerFieldMsg');
+  msg.textContent = '保存中…';
+  msg.style.color = 'var(--text2)';
+  el.classList.add('dirty');
+  try {
+    const r = await fetch(`/api/db/person/${pid}`, {
+      method: 'PATCH',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({[field]: value || null}),
+    });
+    const d = await r.json();
+    if (!r.ok) {
+      if (d.error === 'email_conflict') {
+        msg.innerHTML = `<span style="color:var(--red)">这个邮箱已属于另一个客户，没保存</span>`;
+      } else if (d.error === 'forbidden_field') {
+        msg.innerHTML = `<span style="color:var(--red)">没权限改这个字段</span>`;
+      } else {
+        msg.innerHTML = `<span style="color:var(--red)">${escapeHtml(d.detail || d.error || '保存失败')}</span>`;
+      }
+      return;
+    }
+    msg.innerHTML = '<span style="color:var(--green)">✓ 已保存</span>';
+    el.classList.remove('dirty');
+    setTimeout(() => { msg.textContent = ''; }, 2000);
+    loadList();  // refresh the row in the table
+  } catch (e) {
+    msg.innerHTML = `<span style="color:var(--red)">${escapeHtml(e.message)}</span>`;
+  }
+}
+
+async function onDeleteHandle(accountId, displayName) {
+  if (!confirm(`删除 @${displayName}？\n注意：如果这是该客户的最后一个账号且没有邮箱，客户记录会被一并删除。`)) return;
+  try {
+    const r = await fetch(`/api/db/account/${accountId}`, {method: 'DELETE'});
+    const d = await r.json();
+    if (!r.ok) {
+      alert('删除失败：' + (d.error || ''));
+      return;
+    }
+    await renderHandlesDrawer();
+    loadList();
+  } catch (e) {
+    alert('删除失败：' + e.message);
+  }
+}
+
+async function submitAddCustomer() {
+  const handles = [];
+  const ig = document.getElementById('addIG').value.trim().replace(/^@/, '');
+  const x  = document.getElementById('addX').value.trim().replace(/^@/, '');
+  const tt = document.getElementById('addTT').value.trim().replace(/^@/, '');
+  if (ig) handles.push({platform: 'instagram', username: ig});
+  if (x)  handles.push({platform: 'x', username: x});
+  if (tt) handles.push({platform: 'tiktok', username: tt});
+
+  const tagsRaw = document.getElementById('addTags').value.trim();
+  const tags = tagsRaw ? tagsRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
+
+  const body = {
+    full_name: document.getElementById('addName').value.trim(),
+    email: document.getElementById('addEmail').value.trim(),
+    status: document.getElementById('addStatus').value,
+    owner: document.getElementById('addOwner').value.trim(),
+    tags,
+    notes: document.getElementById('addNotes').value.trim(),
+    handles,
+  };
+
+  if (!body.email && handles.length === 0) {
+    document.getElementById('addStatus2').textContent = '请至少填邮箱或一个平台 handle';
+    document.getElementById('addStatus2').style.color = 'var(--red)';
+    return;
+  }
+
+  const btn = document.getElementById('addSubmitBtn');
+  btn.disabled = true;
+  document.getElementById('addStatus2').textContent = '保存中…';
+  document.getElementById('addStatus2').style.color = 'var(--text2)';
+
+  try {
+    const r = await fetch('/api/people', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    if (!r.ok) {
+      document.getElementById('addStatus2').textContent = d.detail || d.error || '保存失败';
+      document.getElementById('addStatus2').style.color = 'var(--red)';
+      return;
+    }
+    document.getElementById('addStatus2').textContent = `✓ 已添加（id=${d.id}）`;
+    document.getElementById('addStatus2').style.color = 'var(--green)';
+    setTimeout(() => {
+      closeAddCustomer();
+      _offset = 0;
+      // Sort by recently created so the new entry surfaces at the top
+      document.getElementById('orderSel').value = 'created';
+      loadList();
+      refreshNavStats();
+    }, 600);
+  } catch (e) {
+    document.getElementById('addStatus2').textContent = '失败：' + e.message;
+    document.getElementById('addStatus2').style.color = 'var(--red)';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && !document.getElementById('addModal').classList.contains('hidden')) {
+    closeAddCustomer();
+  }
+});
+
+async function openCompose() {
+  if (_selected.size === 0) return;
+  if (_selected.size > 100) {
+    alert(`单批最多 100 人，你已选 ${_selected.size} 人。请先减少选中（建议分批发送）。`);
+    return;
+  }
+  document.getElementById('sendCount').textContent = _selected.size;
+  document.getElementById('previewBox').innerHTML = '';
+  document.getElementById('jobBox').innerHTML = '';
+
+  // Render recipient summary: pull names from currently-rendered rows on the page.
+  // (Name/email cells are now spans, not inputs — read textContent instead.)
+  const summaryEl = document.getElementById('recipientsSummary');
+  try {
+    const rows = document.querySelectorAll('tr[data-pid]');
+    const samp = [];
+    let recentCount = 0;
+    const SEVEN_DAYS = 7 * 86400;
+    const nowSec = Date.now() / 1000;
+    for (const tr of rows) {
+      const pid = +tr.dataset.pid;
+      if (_selected.has(pid)) {
+        const name = (tr.querySelector('.name-display')?.textContent || '').trim() || '(未命名)';
+        const email = (tr.querySelector('.email-display')?.textContent || '').trim() || '(无邮箱)';
+        const lastTxt = tr.querySelector('.relative-time')?.textContent?.trim() || '从未';
+        const lastIsRecent = lastTxt !== '从未' && (lastTxt.includes('分钟前') || lastTxt.includes('小时前') || lastTxt.match(/^[1-7]\s*天前/));
+        if (lastIsRecent) recentCount++;
+        if (samp.length < 5) samp.push({pid, name, email, lastTxt, lastIsRecent});
+      }
+    }
+    const throttleSec = 3;
+    const estTime = Math.ceil(_selected.size * throttleSec);
+    const estMin = Math.floor(estTime / 60);
+    const estStr = estMin > 0 ? `约 ${estMin} 分钟` : `约 ${estTime} 秒`;
+    const more = _selected.size > samp.length ? ` 等共 <b style="color:var(--accent)">${_selected.size}</b> 人` : '';
+    const sampHtml = samp.map(s => {
+      const flag = s.lastIsRecent ? `<span style="color:var(--orange); font-size:10px;">(${s.lastTxt}已联系)</span>` : `<span style="color:var(--text2); font-size:10px;">(${s.lastTxt})</span>`;
+      return `<b>${escapeHtml(s.name)}</b> &lt;${escapeHtml(s.email)}&gt; ${flag}`;
+    }).join('，');
+    const warnLine = recentCount > 0
+      ? `<div style="color:var(--orange); margin-top:6px; font-size:11px;">⚠️ 当前可见行中有 ${recentCount} 人**最近 7 天内已联系过**，避免重复打扰可以先取消勾选他们（去表格里点开关）。</div>`
+      : '';
+    summaryEl.innerHTML = `
+      <div style="color:var(--text2); margin-bottom:4px;">收件人预览：</div>
+      <div>${sampHtml}${more}</div>
+      <div style="color:var(--text2); margin-top:6px; font-size:11px;">每封间隔 ${throttleSec} 秒 · 预计耗时 ${estStr} · 沙箱日上限 200 封</div>
+      ${warnLine}
+    `;
+  } catch (e) {
+    summaryEl.innerHTML = `<span style="color:var(--red);">收件人预览出错: ${escapeHtml(e.message)}</span>`;
+  }
+
+  document.getElementById('composeModal').classList.remove('hidden');
+}
+
+function closeCompose() {
+  document.getElementById('composeModal').classList.add('hidden');
+}
+
+function onBackdropClick(e) {
+  // Only close when clicking the backdrop itself, not the modal content
+  if (e.target.id === 'composeModal') closeCompose();
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && !document.getElementById('composeModal').classList.contains('hidden')) {
+    closeCompose();
+  }
+});
+
+let _polishBackup = null;
+
+async function polishEmail(btn) {
+  const subjectEl = document.getElementById('emailSubject');
+  const bodyEl = document.getElementById('emailBody');
+  const subject = subjectEl.value.trim();
+  const body = bodyEl.value.trim();
+  if (!subject && !body) {
+    alert('先在主题或正文里写点东西，AI 才知道往哪个方向润色');
+    return;
+  }
+  _polishBackup = {subject: subjectEl.value, body: bodyEl.value};
+  btn.disabled = true;
+  const originalText = btn.textContent;
+  btn.textContent = 'AI 润色中…（10-30 秒）';
+  try {
+    const r = await fetch('/api/email/polish', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({subject: subjectEl.value, body: bodyEl.value}),
+    });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    subjectEl.value = d.subject;
+    bodyEl.value = d.body;
+    document.getElementById('undoBtn').classList.remove('hidden');
+  } catch (e) {
+    alert('润色失败：' + e.message);
+    _polishBackup = null;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalText;
+  }
+}
+
+function undoPolish() {
+  if (!_polishBackup) return;
+  document.getElementById('emailSubject').value = _polishBackup.subject;
+  document.getElementById('emailBody').value = _polishBackup.body;
+  _polishBackup = null;
+  document.getElementById('undoBtn').classList.add('hidden');
+}
+
+// -----------------------------------------------------------------
+// Placeholder chips: human-readable buttons that insert a {{var}}
+// token at the cursor of whichever field had focus last.
+// -----------------------------------------------------------------
+// Build tokens at runtime — string-concat them so the Jinja renderer (which
+// runs over this whole template) doesn't eat the literal "{{name}}" itself.
+const _VAR = (k) => '{' + '{' + k + '}' + '}';
+const PLACEHOLDERS = [
+  {token: _VAR('name'),             label: '客户姓名',      hint: '把当前收件人的 full_name 替换进去'},
+  {token: _VAR('email'),            label: '客户邮箱',      hint: 'full email address'},
+  {token: _VAR('owner'),            label: '负责人名',      hint: '客户负责人（员工显示名）'},
+  {token: _VAR('handle_instagram'), label: 'IG handle',     hint: '@开头的 IG 用户名（若有）'},
+  {token: _VAR('handle_x'),         label: 'X handle',      hint: '@开头的 X 用户名（若有）'},
+  {token: _VAR('handle_tiktok'),    label: 'TikTok handle', hint: '@开头的 TikTok 用户名（若有）'},
+];
+// Remember the last text field that had focus AND the caret position at the
+// moment focus left it (mousedown on the chip button blurs the field, so by
+// the time onclick fires document.activeElement is the button, not the input).
+let _lastField = {id: 'emailBody', start: 0, end: 0};
+function _bindFocusTracker() {
+  for (const id of ['emailSubject', 'emailBody']) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    const remember = () => {
+      _lastField = {id, start: el.selectionStart ?? el.value.length,
+                         end:   el.selectionEnd   ?? el.value.length};
+    };
+    el.addEventListener('focus', remember);
+    el.addEventListener('click', remember);
+    el.addEventListener('keyup', remember);
+    el.addEventListener('blur', remember);   // captures caret at moment of blur
+  }
+}
+function _renderChips() {
+  const box = document.getElementById('placeholderChips');
+  if (!box) return;
+  // mousedown handler stops the chip button from stealing focus *before* we
+  // can read the caret; onclick still fires.
+  box.innerHTML = PLACEHOLDERS.map(p => `
+    <button class="btn btn-ghost btn-sm" type="button"
+            style="padding:4px 10px; font-size:11px;"
+            title="${escapeHtml(p.hint)} — 点击插入 ${escapeHtml(p.token)}"
+            onmousedown="event.preventDefault();"
+            onclick="insertPlaceholder('${p.token}')">
+      ＋ ${escapeHtml(p.label)}
+    </button>`).join('');
+}
+function insertPlaceholder(token) {
+  const el = document.getElementById(_lastField.id) || document.getElementById('emailBody');
+  if (!el) return;
+  const start = _lastField.start;
+  const end   = _lastField.end;
+  el.value = el.value.slice(0, start) + token + el.value.slice(end);
+  const pos = start + token.length;
+  el.focus();
+  el.setSelectionRange(pos, pos);
+  _lastField = {id: el.id, start: pos, end: pos};
+  schedulePreview();
+}
+
+// -----------------------------------------------------------------
+// Live preview: re-renders right-hand pane ~400ms after the user
+// stops typing. Cycles through up-to-3 recipients with ◀ / ▶.
+// -----------------------------------------------------------------
+let _previewTimer = null;
+let _previewIdx = 0;
+let _previewCache = [];
+function schedulePreview() {
+  clearTimeout(_previewTimer);
+  _previewTimer = setTimeout(refreshPreview, 400);
+}
+async function refreshPreview() {
+  const subject = document.getElementById('emailSubject').value;
+  const body = document.getElementById('emailBody').value;
+  // Send ALL selected ids — server filters not-owned silently and renders
+  // previews for the first 3 owned ones. Keeps preview alive even if the
+  // batch mixes owned + not-owned (e.g. an admin reassignment after select).
+  const ids = [...Array.from(_selected)];
+  if (!ids.length) {
+    _previewCache = [];
+    _previewNotOwned = [];
+    _renderPreview();
+    return;
+  }
+  try {
+    const r = await fetch('/api/email/preview', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({person_ids: ids, subject, body}),
+    });
+    if (!r.ok) {
+      const errTxt = await r.text();
+      _previewCache = [{__err: `HTTP ${r.status}: ${errTxt.slice(0, 200)}`}];
+      _previewNotOwned = [];
+    } else {
+      const d = await r.json();
+      _previewCache = d.previews || [];
+      _previewNotOwned = d.not_owned || [];
+      if (_previewIdx >= _previewCache.length) _previewIdx = 0;
+    }
+  } catch (e) {
+    _previewCache = [{__err: e.message}];
+    _previewNotOwned = [];
+  }
+  _renderPreview();
+}
+let _previewNotOwned = [];
+function cyclePreview(delta) {
+  if (!_previewCache.length) return;
+  _previewIdx = (_previewIdx + delta + _previewCache.length) % _previewCache.length;
+  _renderPreview();
+}
+function _renderPreview() {
+  const box = document.getElementById('previewBox');
+  const idxBox = document.getElementById('previewIndex');
+  if (!box) return;
+  if (!_previewCache.length) {
+    box.innerHTML = '<div class="empty" style="padding:20px; text-align:center; color:var(--text2);">先在主题 / 正文里写点东西，这里会实时显示渲染好的邮件</div>';
+    if (idxBox) idxBox.textContent = '— / —';
+    return;
+  }
+  if (_previewCache[0].__err) {
+    box.innerHTML = `<div style="color:var(--red);">预览出错：${escapeHtml(_previewCache[0].__err)}</div>`;
+    return;
+  }
+  const p = _previewCache[_previewIdx];
+  if (idxBox) idxBox.textContent = `第 ${_previewIdx + 1} / ${_previewCache.length} 封`;
+  const warn = (_previewNotOwned && _previewNotOwned.length) ? `
+    <div style="background: var(--orange-dim, #6a3500); color:#fff; padding: 8px 12px; border-radius: 8px; margin-bottom: 8px; font-size: 12px;">
+      ⚠ 选中的客户里有 <b>${_previewNotOwned.length}</b> 个不在你名下（可能管理员之前转派给了别人）。点发送时这批会被服务器拒掉。请去搜索框筛掉这些再发，或者请管理员重新分配。
+    </div>` : '';
+  box.innerHTML = warn + `
+    <div style="background: var(--surface2); padding: 12px 14px; border-radius: 8px; border: 1px solid var(--border);">
+      <div style="color:var(--text2); margin-bottom:8px; padding-bottom:8px; border-bottom:1px solid var(--border);">
+        <div>收件人：<b>${escapeHtml(p.to)}</b> (${escapeHtml(p.name||'未命名')})</div>
+      </div>
+      <div style="margin-bottom:8px;"><span style="color:var(--text2);">主题：</span> <b>${escapeHtml(p.subject)}</b></div>
+      <div style="color:var(--text2); font-size:11px; margin-bottom:4px;">正文：</div>
+      <pre style="white-space:pre-wrap; margin:0; color:var(--text); font-family: inherit; font-size:12px; line-height:1.5;">${escapeHtml(p.body)}</pre>
+    </div>`;
+}
+
+// Boot chips + focus tracker once on script load — both DOM nodes exist
+// before the modal is shown (just hidden via .hidden class).
+_renderChips();
+_bindFocusTracker();
+// And refresh the preview every time openCompose runs (we monkey-patch via
+// a wrapper inside a load-time IIFE so closure-capture is unambiguous).
+(function() {
+  const _orig = window.openCompose;
+  window.openCompose = async function() {
+    await _orig.apply(this, arguments);
+    _previewIdx = 0;
+    _previewCache = [];
+    _renderPreview();
+    refreshPreview();
+  };
+})();
+
+async function confirmAndSend() {
+  const subject = document.getElementById('emailSubject').value.trim();
+  const body = document.getElementById('emailBody').value.trim();
+  const throttle = +document.getElementById('throttleInput').value || 3;
+  if (!subject || !body) { alert('主题和正文都不能空'); return; }
+  const n = _selected.size;
+  if (!confirm(`确认发送给 ${n} 人？发送过程不可中断。`)) return;
+  document.getElementById('sendBtn').disabled = true;
+  try {
+    const r = await fetch('/api/email/send_batch', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({person_ids: [...Array.from(_selected)], subject, body, throttle_seconds: throttle}),
+    });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    pollJob(d.job_id);
+  } catch (e) {
+    alert('发送启动失败：' + e.message);
+    document.getElementById('sendBtn').disabled = false;
+  }
+}
+
+async function pollJob(jobId) {
+  const box = document.getElementById('jobBox');
+  let stop = false;
+  while (!stop) {
+    const r = await fetch(`/api/email/job/${jobId}`);
+    const j = await r.json();
+    const pct = Math.round(((j.sent + j.failed + j.skipped) / j.total) * 100);
+    const statusLabel = ({
+      done:        '<b style="color:var(--green);">✓ 完成</b>',
+      interrupted: '<b style="color:var(--orange);">⚠ 中断</b>',
+      running:     '<b>进行中</b>',
+    })[j.status] || `<b>${escapeHtml(j.status||'?')}</b>`;
+    box.innerHTML = `
+      <div style="background: var(--surface2); padding: 10px 12px; border-radius: 8px;">
+        <div style="font-size:12px; margin-bottom:6px;">
+          状态 ${statusLabel} · 已发 <b style="color:var(--green);">${j.sent}</b> / 失败 <b style="color:var(--red);">${j.failed}</b> / 跳过 <b style="color:var(--text2);">${j.skipped}</b> / 共 ${j.total}
+        </div>
+        <div style="background: var(--bg); height:6px; border-radius:3px; overflow:hidden;">
+          <div style="background: var(--accent); height:100%; width: ${pct}%; transition: width .3s;"></div>
+        </div>
+        ${j.status === 'done' || j.status === 'interrupted' ? renderJobLog(j.log) : ''}
+        ${j.status === 'interrupted' ? renderInterruptedActions(j) : ''}
+      </div>`;
+    if (j.status === 'done') {
+      stop = true;
+      document.getElementById('sendBtn').disabled = false;
+      const closeRow = document.createElement('div');
+      closeRow.style.marginTop = '10px';
+      closeRow.innerHTML = '<button class="btn btn-accent btn-sm" onclick="closeCompose()">完成 — 关闭</button>';
+      document.getElementById('jobBox').appendChild(closeRow);
+      _selected.clear();
+      loadList();
+      refreshNavStats();
+    } else if (j.status === 'interrupted') {
+      // Stop polling — the worker is dead. User clicks 「重发剩余」to spawn
+      // a new worker (then polling resumes via the resume button handler).
+      stop = true;
+      document.getElementById('sendBtn').disabled = false;
+    } else {
+      await new Promise(r => setTimeout(r, 2000));
+    }
+  }
+}
+
+function renderInterruptedActions(j) {
+  const remaining = j.remaining_count != null ? j.remaining_count : (j.total - j.sent - j.failed - j.skipped);
+  if (j.resume_possible) {
+    return `
+      <div style="margin-top:10px; padding-top:10px; border-top:1px dashed var(--border);">
+        <div style="font-size:11px; color:var(--text2); margin-bottom:6px;">
+          发送过程被服务器重启打断（部署 / 崩溃）。剩 <b>${remaining}</b> 个收件人没发，已发的 <b>${j.sent}</b> 个不会重复。
+        </div>
+        <button class="btn btn-accent btn-sm" onclick="resumeJob('${escapeHtml(j.id)}')">重发剩余 ${remaining} 个</button>
+        <button class="btn btn-ghost btn-sm" onclick="closeCompose()">取消，关闭</button>
+      </div>`;
+  }
+  return `
+    <div style="margin-top:10px; padding-top:10px; border-top:1px dashed var(--border); font-size:11px; color:var(--orange);">
+      ⚠ 这是 2026-05-22 之前的旧任务，没保存原始收件人列表，无法自动续发。需要重新走一遍群发流程（已发出的 ${j.sent} 个会显示"最近联系"，请手动取消勾选）。
+    </div>`;
+}
+
+async function resumeJob(jobId) {
+  const r = await fetch(`/api/email/job/${jobId}/resume`, {method: 'POST'});
+  const d = await r.json();
+  if (!r.ok) {
+    alert('续发失败：' + (d.detail || d.error || ''));
+    return;
+  }
+  // Re-arm the poll loop for the same job_id; backend resurrected the
+  // status='running' state.
+  document.getElementById('sendBtn').disabled = true;
+  pollJob(jobId);
+}
+
+function renderJobLog(log) {
+  const fails = (log || []).filter(l => !l.ok);
+  if (!fails.length) return '<div style="font-size:11px; color:var(--green); margin-top:8px;">全部成功 ✓</div>';
+  return `<div style="font-size:11px; margin-top:8px; max-height:160px; overflow-y:auto;">
+    <div style="color:var(--text2); margin-bottom:4px;">失败明细（${fails.length}）：</div>
+    ${fails.map(l => `<div style="color:var(--red);">• ${escapeHtml(l.email||'')} → ${escapeHtml(l.error||'')}</div>`).join('')}
+  </div>`;
+}
+
+window.STAFF_LIST = [];
+
+async function bootstrapStaff() {
+  // Wait for /api/auth/me to populate window.CURRENT_USER (refreshUser fires
+  // async on page load). Poll briefly then fetch staff for admin only.
+  for (let i = 0; i < 30 && !window.CURRENT_USER; i++) await new Promise(r => setTimeout(r, 50));
+  if (window.CURRENT_USER && window.CURRENT_USER.role === 'admin') {
+    try {
+      const r = await fetch('/api/admin/active_staff');
+      const d = await r.json();
+      window.STAFF_LIST = d.users || [];
+      // populate filters and bulk-assign dropdowns
+      const aSel = document.getElementById('assignSel');
+      const bSel = document.getElementById('bulkAssignSel');
+      const opts = window.STAFF_LIST.map(u =>
+        `<option value="${u.id}">${escapeHtml(u.display_name || u.username)} (${u.role})</option>`
+      ).join('');
+      if (aSel) aSel.insertAdjacentHTML('beforeend', opts);
+      if (bSel) bSel.innerHTML = '<option value="">— 未分配 —</option>' + opts;
+    } catch (e) {}
+  }
+  loadList();
+}
+bootstrapStaff();
+
+// Re-enable bulk-assign button as selection changes
+const _origUpdateSelMeta = updateSelMeta;
+updateSelMeta = function() {
+  _origUpdateSelMeta();
+  const bSel = document.getElementById('bulkAssignSel');
+  const bBtn = document.getElementById('bulkAssignBtn');
+  if (bSel && bBtn) {
+    const has = _selected.size > 0;
+    bSel.disabled = !has;
+    bBtn.disabled = !has;
+  }
+};
+
+// ============================================================
+// Bulk hydrate (admin-only) — mirror shape of /similarity bulk
+// ============================================================
+const HYDRATE_DEFAULT_STATUSES = ["已成交", "已回复", "已联系"];
+const HYDRATE_ALL_STATUSES = ["待联系","已联系","已回复","已成交","主动来找","已放弃","不适合"];
+let hydratePollTimer = null;
+let hydrateActiveJobId = null;
+
+function hydrateSetLauncher(visible) {
+  document.getElementById('hydrateLauncher').classList.toggle('hidden', !visible);
+  document.getElementById('hydrateProgress').classList.toggle('hidden', visible);
+}
+
+async function loadHydrateActive() {
+  // Only fetch if admin (the endpoint is admin-only; non-admins get 401)
+  if (!window.CURRENT_USER || window.CURRENT_USER.role !== 'admin') return;
+  try {
+    const r = await fetch('/api/hydrate/bulk/active');
+    if (!r.ok) return;
+    const d = await r.json();
+    if (d.job) {
+      hydrateActiveJobId = d.job.id;
+      hydrateSetLauncher(false);
+      renderHydrateJob(d.job);
+      if (d.job.status === 'running') startHydratePoll();
+    } else {
+      hydrateSetLauncher(true);
+      document.getElementById('hydrateActiveHint').textContent = '';
+    }
+  } catch (e) {}
+}
+
+async function openHydrateModal() {
+  document.getElementById('hydrateModal').classList.remove('hidden');
+  const box = document.getElementById('hydrateStatuses');
+  box.innerHTML = HYDRATE_ALL_STATUSES.map(s => `
+    <label class="status-filter">
+      <input type="checkbox" class="hydrate-status-cb" value="${escapeHtml(s)}"
+             ${HYDRATE_DEFAULT_STATUSES.includes(s) ? 'checked' : ''}> ${escapeHtml(s)}
+    </label>`).join('');
+  document.querySelectorAll('.hydrate-status-cb').forEach(cb =>
+    cb.addEventListener('change', refreshHydrateEstimate));
+  await refreshHydrateEstimate();
+}
+
+function closeHydrateModal() {
+  document.getElementById('hydrateModal').classList.add('hidden');
+}
+
+function currentHydrateStatuses() {
+  return [...document.querySelectorAll('.hydrate-status-cb:checked')].map(cb => cb.value);
+}
+
+async function refreshHydrateEstimate() {
+  const box = document.getElementById('hydrateEstimate');
+  box.textContent = '估算中…';
+  const statuses = currentHydrateStatuses();
+  const qs = new URLSearchParams();
+  qs.set('statuses', statuses.join(','));
+  try {
+    const r = await fetch('/api/hydrate/bulk/estimate?' + qs.toString());
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    const platLine = Object.entries(d.by_platform || {})
+      .map(([k,v]) => `${escapeHtml(k)}:${v}`).join('，') || '—';
+    const bal = (d.tikhub_balance_usd == null) ? '未知' : `$${d.tikhub_balance_usd.toFixed(4)}`;
+    const activeBit = d.active_job
+      ? `<div style="color:#d97706; margin-top:8px;">⚠️ 当前已有 hydrate 任务 <code>${escapeHtml(d.active_job.id)}</code>（${escapeHtml(d.active_job.status)}），不能再起一个。</div>`
+      : '';
+    box.innerHTML = `
+      <div>待补 placeholder：<b>${d.placeholders}</b> 个（${platLine}）</div>
+      <div>预估成本：<b>$${(d.upper_cost_usd ?? 0).toFixed(2)}</b>（每条约 $0.001 ${escapeHtml('fetch_user_info')}）</div>
+      <div>TikHub 余额：<b>${bal}</b></div>
+      ${activeBit}`;
+    document.getElementById('hydrateConfirmBtn').disabled = (d.placeholders === 0) || !!d.active_job;
+  } catch (e) {
+    box.innerHTML = `<div class="error-msg">估算失败：${escapeHtml(e.message)}</div>`;
+    document.getElementById('hydrateConfirmBtn').disabled = true;
+  }
+}
+
+async function startHydrate() {
+  const statuses = currentHydrateStatuses();
+  const body = (statuses.length === HYDRATE_ALL_STATUSES.length)
+    ? {statuses: null}
+    : (statuses.length === 0 ? {statuses: []} : {statuses});
+  document.getElementById('hydrateConfirmBtn').disabled = true;
+  try {
+    const r = await fetch('/api/hydrate/bulk/start', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    if (!r.ok) {
+      if (r.status === 409 && d.job_id) {
+        closeHydrateModal();
+        hydrateActiveJobId = d.job_id;
+        hydrateSetLauncher(false);
+        await pollHydrateOnce();
+        return;
+      }
+      throw new Error(d.detail || d.error || `HTTP ${r.status}`);
+    }
+    closeHydrateModal();
+    hydrateActiveJobId = d.job_id;
+    hydrateSetLauncher(false);
+    startHydratePoll();
+  } catch (e) {
+    alert('启动失败：' + e.message);
+    document.getElementById('hydrateConfirmBtn').disabled = false;
+  }
+}
+
+async function pollHydrateOnce() {
+  if (!hydrateActiveJobId) return;
+  try {
+    const r = await fetch(`/api/hydrate/bulk/${hydrateActiveJobId}`);
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    renderHydrateJob(d);
+    if (d.status !== 'running') stopHydratePoll();
+    if (d.status === 'done') {
+      // Refresh the people list so the upgraded rows lose their placeholder badge
+      if (typeof loadList === 'function') loadList();
+    }
+  } catch (e) {
+    stopHydratePoll();
+    document.getElementById('hydrateStatus').textContent = 'error: ' + e.message;
+  }
+}
+
+function startHydratePoll() {
+  stopHydratePoll();
+  pollHydrateOnce();
+  hydratePollTimer = setInterval(pollHydrateOnce, 2000);
+}
+
+function stopHydratePoll() {
+  if (hydratePollTimer) { clearInterval(hydratePollTimer); hydratePollTimer = null; }
+}
+
+function renderHydrateJob(job) {
+  const p = job.progress || {};
+  document.getElementById('hydrateStats').innerHTML = `
+    <div class="stat">升格成功：<span class="num">${p.hydrated || 0}</span></div>
+    <div class="stat" title="API 返回了但没有 pk_id（可能账号已删/改名）">无 pk_id：<span class="num">${p.missing || 0}</span></div>
+    <div class="stat">新插入：<span class="num">${p.upserted_new || 0}</span></div>
+    <div class="stat">出错：<span class="num">${p.errors || 0}</span></div>`;
+  const total = job.placeholder_total || 0;
+  const cur = job.cursor || 0;
+  document.getElementById('hydrateCursor').textContent = `${cur} / ${total}`;
+  document.getElementById('hydrateStatus').textContent = job.status;
+  document.getElementById('hydrateBar').style.width = total ? Math.round(100 * cur / total) + '%' : '0%';
+  document.getElementById('hydrateSpin').style.display = (job.status === 'running') ? 'inline-block' : 'none';
+  document.getElementById('hydrateResumeBtn').classList.toggle('hidden', job.status !== 'interrupted');
+  document.getElementById('hydrateCancelBtn').classList.toggle('hidden', job.status !== 'interrupted');
+  const tail = (job.per_item || []).slice(-8).reverse();
+  document.getElementById('hydrateTail').innerHTML = tail.map(e => {
+    const tag = e.error ? `<span style="color:#dc2626;">err: ${escapeHtml(e.error)}</span>`
+                        : `ok`;
+    return `<div>· #${e.idx+1} @${escapeHtml(e.username)} (${escapeHtml(e.platform)}) — ${tag} · ${e.duration_ms}ms</div>`;
+  }).join('') || '<div style="opacity:.6;">尚无完成的条目</div>';
+}
+
+async function resumeHydrate() {
+  if (!hydrateActiveJobId) return;
+  document.getElementById('hydrateResumeBtn').disabled = true;
+  try {
+    const r = await fetch(`/api/hydrate/bulk/${hydrateActiveJobId}/resume`, {method:'POST'});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || d.error || `HTTP ${r.status}`);
+    startHydratePoll();
+  } catch (e) {
+    alert('续跑失败：' + e.message);
+  } finally {
+    document.getElementById('hydrateResumeBtn').disabled = false;
+  }
+}
+
+async function cancelHydrate() {
+  if (!hydrateActiveJobId) return;
+  if (!confirm('确定放弃此 hydrate 任务？已升格的账号会保留。')) return;
+  document.getElementById('hydrateCancelBtn').disabled = true;
+  try {
+    const r = await fetch(`/api/hydrate/bulk/${hydrateActiveJobId}/cancel`, {method:'POST'});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || d.error || `HTTP ${r.status}`);
+    stopHydratePoll();
+    hydrateActiveJobId = null;
+    hydrateSetLauncher(true);
+  } catch (e) {
+    alert('放弃失败：' + e.message);
+  } finally {
+    document.getElementById('hydrateCancelBtn').disabled = false;
+  }
+}
+
+function dismissHydrate() {
+  stopHydratePoll();
+  hydrateActiveJobId = null;
+  hydrateSetLauncher(true);
+  loadHydrateActive();
+}
+
+// Boot in admin context (deferred until refreshNavStats sets CURRENT_USER)
+setTimeout(loadHydrateActive, 600);
+</script>
+{% endblock %}

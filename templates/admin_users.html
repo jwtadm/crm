@@ -1,0 +1,142 @@
+{% extends "_base.html" %}
+{% set active = "adminUsers" %}
+{% block title %}员工管理 — Scout{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1><span>员工</span>管理</h1>
+  <p>激活/停用员工 · 重置密码 · 角色变更 · 客户分配迁移 · 审计日志</p>
+</div>
+
+<div class="card">
+  <div class="card-header"><h2>员工列表</h2>
+    <button class="btn btn-ghost btn-sm" id="refreshBtn" style="margin-left:auto;">刷新</button>
+    <button class="btn btn-ghost btn-sm" id="migrateBtn">迁移 owner 文本</button>
+  </div>
+  <div id="usersBox"></div>
+</div>
+
+<div class="card">
+  <div class="card-header"><h2>审计日志（最近 200 条）</h2>
+    <button class="btn btn-ghost btn-sm" id="auditRefreshBtn" style="margin-left:auto;">刷新</button>
+  </div>
+  <div id="auditBox" style="max-height:380px; overflow:auto;"></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+function fmtTime(ts) {
+  if (!ts) return '—';
+  const d = new Date(ts * 1000);
+  return d.toLocaleString();
+}
+
+async function loadUsers() {
+  const r = await fetch('/api/admin/users');
+  const {users} = await r.json();
+  const rows = users.map(u => {
+    const isAdmin = u.role === 'admin';
+    return `<tr data-id="${u.id}">
+      <td>${escapeHtml(u.username)}</td>
+      <td>${escapeHtml(u.email || '')}</td>
+      <td>${escapeHtml(u.display_name || '')}</td>
+      <td><span class="role-badge role-${u.role}">${u.role}</span></td>
+      <td>${u.is_active ? '<span style="color:var(--green)">激活</span>' : '<span style="color:var(--text2)">未激活</span>'}</td>
+      <td style="text-align:right">${u.assigned_count}</td>
+      <td>${fmtTime(u.last_login_at)}</td>
+      <td style="white-space:nowrap;">
+        ${u.is_active
+          ? `<button class="btn btn-ghost btn-sm" data-act="deactivate">停用</button>`
+          : `<button class="btn btn-ghost btn-sm" data-act="activate">激活</button>`}
+        <button class="btn btn-ghost btn-sm" data-act="reset">重置密码</button>
+        <button class="btn btn-ghost btn-sm" data-act="role">${isAdmin ? '降为 staff' : '升为 admin'}</button>
+        <button class="btn btn-ghost btn-sm" data-act="delete">删除</button>
+      </td>
+    </tr>`;
+  }).join('');
+  document.getElementById('usersBox').innerHTML = `
+    <table style="width:100%; font-size:12px; border-collapse:collapse;">
+      <thead><tr style="color:var(--text2); text-align:left;">
+        <th style="padding:6px 4px;">用户名</th><th>邮箱</th><th>显示名</th>
+        <th>角色</th><th>状态</th><th style="text-align:right;">客户数</th>
+        <th>最后登录</th><th>操作</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+  document.querySelectorAll('#usersBox button[data-act]').forEach(b => {
+    b.onclick = () => onAct(b);
+  });
+}
+
+async function onAct(btn) {
+  const tr = btn.closest('tr');
+  const id = tr.getAttribute('data-id');
+  const act = btn.getAttribute('data-act');
+  if (act === 'activate') {
+    await fetch(`/api/admin/users/${id}/activate`, {method: 'POST'});
+  } else if (act === 'deactivate') {
+    const unassign = confirm('该员工名下的客户是否一起转回未分配池？\n（确定=转回未分配；取消=保留 owner 关系）');
+    const r = await fetch(`/api/admin/users/${id}/deactivate`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({unassign_customers: unassign}),
+    });
+    const data = await r.json();
+    if (!r.ok) { alert(data.error || '失败'); return; }
+  } else if (act === 'reset') {
+    const r = await fetch(`/api/admin/users/${id}/reset_password`, {method: 'POST'});
+    const data = await r.json();
+    if (!r.ok) { alert(data.error || '失败'); return; }
+    alert('临时密码（只显示一次）：\n\n' + data.temp_password + '\n\n请告知该员工，登录后会被强制改密。');
+  } else if (act === 'role') {
+    const cells = tr.querySelectorAll('td');
+    const isAdmin = cells[3].textContent.includes('admin');
+    const newRole = isAdmin ? 'staff' : 'admin';
+    const r = await fetch(`/api/admin/users/${id}/role`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({role: newRole}),
+    });
+    const data = await r.json();
+    if (!r.ok) { alert(data.error || '失败'); return; }
+  } else if (act === 'delete') {
+    if (!confirm('确定删除？只允许删除从未登录且无客户的账号。')) return;
+    const r = await fetch(`/api/admin/users/${id}`, {method: 'DELETE'});
+    const data = await r.json();
+    if (!r.ok) { alert(data.detail || data.error || '失败'); return; }
+  }
+  loadUsers();
+}
+
+async function loadAudit() {
+  const r = await fetch('/api/admin/audit');
+  const {events} = await r.json();
+  document.getElementById('auditBox').innerHTML = events.map(e => {
+    const detail = e.detail ? ` <span style="color:var(--text2)">${escapeHtml(JSON.stringify(e.detail))}</span>` : '';
+    return `<div style="padding:6px 8px; border-bottom:1px solid var(--border); font-size:12px;">
+      <span style="color:var(--text2)">${fmtTime(e.created_at)}</span> ·
+      <b>${escapeHtml(e.actor_username || '?')}</b> ·
+      <span style="color:var(--accent)">${escapeHtml(e.action)}</span>
+      ${e.target ? '· <span style="color:var(--text2)">' + escapeHtml(e.target) + '</span>' : ''}
+      ${detail}
+    </div>`;
+  }).join('') || '<div class="empty">暂无审计记录</div>';
+}
+
+document.getElementById('refreshBtn').onclick = loadUsers;
+document.getElementById('auditRefreshBtn').onclick = loadAudit;
+document.getElementById('migrateBtn').onclick = async () => {
+  const dry = await fetch('/api/admin/migrate_owners', {
+    method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}',
+  }).then(r => r.json());
+  const ok = confirm(`干跑结果：将更新 ${dry.would_update} 行；无法匹配 ${dry.unmatched}；歧义 ${dry.ambiguous}。\n\n是否真的写入？`);
+  if (!ok) return;
+  const r = await fetch('/api/admin/migrate_owners', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({apply: true}),
+  }).then(r => r.json());
+  alert(`已更新 ${r.would_update} 行。`);
+  loadUsers();
+};
+
+loadUsers();
+loadAudit();
+</script>
+{% endblock %}

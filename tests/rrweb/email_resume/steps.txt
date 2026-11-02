@@ -1,0 +1,98 @@
+# COVERAGE: 中断的群发任务可以一键「重发剩余」（payload 现在保存 person_ids/subject/body）; INTRODUCED: post-ecc2eab
+# ============================================================================
+#  事故复盘：2026-05-22 中午部署「员工加客户」commit 时撞死了 Talia 正在跑的
+#  100 人群发，21 发了/79 没发，且老代码没保存 person_ids/subject/body → 完全
+#  无法续发。这条测试用一个预先种好的 interrupted job 验证修复后：
+#    1. /api/email/job/<id> 返回 resume_possible=true 和 remaining_count
+#    2. compose modal 渲染「重发剩余 N 个」按钮
+#    3. 点了之后 POST /resume → 新 worker 抓 → 跳过已发的、发剩下的
+#    4. mailer stub 收到 1 条新邮件（B 收到，A 不重发）
+# ============================================================================
+
+goto http://localhost:5001/login
+wait_for input#username
+hover input#username
+type input#username "admin"
+hover input#password
+type input#password "admin12345"
+hover button#loginBtn
+click button#loginBtn
+wait_url /similarity
+goto http://localhost:5001/people
+wait_for ".crm-table tbody tr"
+wait_ms 800
+
+# Reset stub mailbox so we count only resumed sends
+eval "fetch('/__stub__/reset', {method:'POST'})"
+wait_ms 400
+
+eval "(()=>{ if(!document.getElementById('__cap')){ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; } window.confirm=(_)=>true; window.alert=(m)=>{ console.log('[alert]', m); }; window.__cap('① 种子里有一个 interrupted job：rrwebfx-resume；A 已发，B 待续发'); })()"
+wait_ms 3000
+
+# Sanity: probe the API directly first
+goto http://localhost:5001/api/email/job/rrwebfx-resume
+wait_text "interrupted"
+assert_text "resume_possible"
+assert_text "rrwebfx_resume_a"
+
+eval "(()=>{ if(!document.getElementById('__cap')){ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; } window.confirm=(_)=>true; window.__cap('② API 报告：status=interrupted, resume_possible=true, remaining=1'); })()"
+wait_ms 3000
+
+# Now drive the UI: go back to /people, open compose modal (need to select
+# something to enable the button), then inject pollJob(seeded_id) so the
+# modal's jobBox renders the interrupted state.
+goto http://localhost:5001/people
+wait_for ".crm-table tbody tr"
+wait_ms 800
+# Re-arm window.confirm on this fresh page
+eval "window.confirm=(_)=>true; window.alert=(m)=>{ console.log('[alert]', m); };"
+
+hover "#qInput"
+click "#qInput"
+type "#qInput" "RRWebFx Resume Recipient"
+wait_ms 1500
+assert_count ".crm-table tbody tr" 2
+
+hover ".crm-table tbody tr:nth-child(1) .row-cb"
+click ".crm-table tbody tr:nth-child(1) .row-cb"
+hover ".crm-table tbody tr:nth-child(2) .row-cb"
+click ".crm-table tbody tr:nth-child(2) .row-cb"
+wait_ms 500
+hover "#bulkBtn"
+click "#bulkBtn"
+wait_for "#emailSubject"
+wait_ms 1200
+
+eval "(()=>{ if(!document.getElementById('__cap')){ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; } window.__cap('③ 打开 compose modal，直接调 pollJob(seeded_id) 让它渲染 interrupted UI'); })()"
+wait_ms 3000
+
+# Trigger pollJob against the seeded job id. The UI will render the
+# "重发剩余 N 个" button inside jobBox.
+eval "pollJob('rrwebfx-resume')"
+wait_ms 2500
+
+wait_text "重发剩余"
+assert_text "重发剩余"
+assert_text "1"
+
+eval "(()=>{ if(!document.getElementById('__cap')){ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; } window.__cap('④ 「重发剩余 1 个」按钮可见。点它 → POST /resume → 新 worker 抓 → 发 B'); })()"
+wait_ms 3000
+
+hover "button:has-text(\"重发剩余\")"
+wait_ms 500
+click "button:has-text(\"重发剩余\")"
+wait_text "✓ 完成"
+wait_ms 1500
+
+eval "(()=>{ if(!document.getElementById('__cap')){ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; } window.__cap('⑤ 完成 ✓ — 验证 stub 信箱只收到 B 的邮件（A 没重发）'); })()"
+wait_ms 2500
+
+# Check the stub inbox: should contain B only
+goto http://localhost:5001/__stub__/sent
+wait_text "rrwebfx_resume_b@stub.local"
+assert_text "rrwebfx_resume_b@stub.local"
+# A should NOT have been re-sent
+eval "(()=>{ const txt = document.body.textContent || ''; if(txt.includes('rrwebfx_resume_a@stub.local')) throw new Error('A 被重复发送了：'+txt); window.__cap=(t)=>{const c=document.getElementById('__cap'); if(c) c.textContent=t}; })()"
+
+eval "(()=>{ if(!document.getElementById('__cap')){ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; } window.__cap('✅ 通过：interrupted job 续发，不重复已发的'); })()"
+wait_ms 3500

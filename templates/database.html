@@ -1,0 +1,182 @@
+{% extends "_base.html" %}
+{% set active = "database" %}
+{% block title %}平台账号 · Scout{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>平台 <span>账号</span></h1>
+  <p>已收集的所有账号。点击任意行查看 / 编辑 CRM 信息；可按文字过滤、按描述重排、导出 Excel。</p>
+</div>
+
+<div class="card">
+  <div class="list-controls">
+    <input type="text" id="textFilter" placeholder="按昵称/简介/分类过滤" style="flex:1; min-width:240px;" oninput="debouncedLoad()">
+    <input type="text" id="descInput" placeholder="按描述用 embedding 重排" style="flex:2; min-width:280px;" oninput="debouncedLoad()">
+    <label class="platform-filter"><input type="checkbox" class="plat-cb" value="instagram" checked> Instagram</label>
+    <label class="platform-filter"><input type="checkbox" class="plat-cb" value="tiktok" checked> TikTok</label>
+    <label class="platform-filter"><input type="checkbox" class="plat-cb" value="x" checked> X</label>
+  </div>
+  <div class="btn-row" style="margin-top:6px;">
+    <button class="btn btn-orange btn-sm" onclick="embedMissing()" title="给所有还没生成 embedding 的账号补一遍 embedding。重排功能依赖它。">补全 bio embedding</button>
+    <button class="btn btn-green btn-sm" onclick="exportExcel()">导出 Excel</button>
+    <button class="btn btn-ghost btn-sm" onclick="clearDb()" style="color: var(--red); border-color: var(--red);">清空数据库</button>
+    <span id="opStatus" style="color:var(--text2); font-size:12px;"></span>
+  </div>
+  <div id="dbList" class="list" style="margin-top:12px; max-height:none;"><div class="empty">加载中…</div></div>
+</div>
+
+<!-- 详情抽屉 -->
+<div id="drawer" class="hidden" style="position:fixed; top:0; right:0; bottom:0; width:420px; background: var(--surface); border-left: 1px solid var(--border); padding: 20px; overflow-y: auto; z-index: 200; box-shadow: -4px 0 12px rgba(0,0,0,0.3);">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 16px;">
+    <h2 style="font-size:16px;">账号详情</h2>
+    <button class="btn btn-ghost btn-sm" onclick="closeDrawer()">✕ 关闭</button>
+  </div>
+  <div id="drawerBody"></div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const STATUS_LABEL = {lead: '潜在客户', contacted: '已联系', replied: '已回复', qualified: '已确认', dropped: '已放弃'};
+let _t = null;
+function debouncedLoad() { clearTimeout(_t); _t = setTimeout(loadList, 300); }
+
+async function loadList() {
+  const text = document.getElementById('textFilter').value.trim();
+  const desc = document.getElementById('descInput').value.trim();
+  const plats = [...document.querySelectorAll('.plat-cb:checked')].map(cb => cb.value);
+  const params = new URLSearchParams();
+  if (text) params.set('text', text);
+  if (desc) params.set('description', desc);
+  if (plats.length) params.set('platforms', plats.join(','));
+  params.set('limit', '500');
+  document.getElementById('dbList').innerHTML = '<div class="empty">加载中…</div>';
+  try {
+    const r = await fetch('/api/db/list?' + params.toString());
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    const showScore = !!desc;
+    document.getElementById('dbList').innerHTML = (d.accounts||[]).length
+      ? d.accounts.map(a => renderAccount(a, {showScore})).join('')
+      : '<div class="empty">数据库为空。去 Query 搜索或相似发现页面跑一次。</div>';
+    document.querySelectorAll('#dbList .result-item').forEach(it => {
+      it.addEventListener('click', e => {
+        if (e.target.tagName === 'A') return;
+        openDrawer(+it.dataset.id);
+      });
+      it.style.cursor = 'pointer';
+    });
+  } catch (e) {
+    document.getElementById('dbList').innerHTML = `<div class="error-msg">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+async function openDrawer(accountId) {
+  document.getElementById('drawer').classList.remove('hidden');
+  document.getElementById('drawerBody').innerHTML = '<div class="empty">加载中…</div>';
+  try {
+    const r = await fetch(`/api/db/account/${accountId}`);
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    const a = d.account;
+    const p = d.person || {};
+    const siblings = d.other_accounts_for_person || [];
+    const tags = (() => { try { return JSON.parse(p.tags || '[]'); } catch { return []; } })();
+    document.getElementById('drawerBody').innerHTML = `
+      ${renderAccount(a)}
+      <div style="margin: 16px 0 10px; font-size:13px; font-weight:600; color: var(--text2);">人物档案（CRM）</div>
+      <div style="background: var(--surface2); border-radius: 8px; padding: 12px; font-size: 13px;">
+        <div style="margin-bottom:8px;"><span style="color:var(--text2);">邮箱：</span> ${escapeHtml(p.email || '（无 — 按平台 ID 标识）')}</div>
+        <div style="margin-bottom:8px;"><span style="color:var(--text2);">状态：</span>
+          <select id="crmStatus" style="padding:5px 8px; background: var(--surface); border:1px solid var(--border); color:var(--text); border-radius:6px; font-size:12px;">
+            ${['lead','contacted','replied','qualified','dropped'].map(s => `<option value="${s}" ${s===p.status?'selected':''}>${STATUS_LABEL[s]}</option>`).join('')}
+          </select>
+        </div>
+        <div style="margin-bottom:8px;"><span style="color:var(--text2);">标签：</span>
+          <input type="text" id="crmTags" value="${escapeHtml(tags.join(', '))}" placeholder="逗号分隔" style="width: 70%;">
+        </div>
+        <div style="margin-bottom:8px;"><span style="color:var(--text2);">负责人：</span>
+          <input type="text" id="crmOwner" value="${escapeHtml(p.owner || '')}" style="width: 70%;">
+        </div>
+        <div style="margin-bottom:8px;"><span style="color:var(--text2);">备注：</span>
+          <textarea id="crmNotes" rows="3" style="margin-top: 4px;">${escapeHtml(p.notes || '')}</textarea>
+        </div>
+        <button class="btn btn-accent btn-sm" onclick="savePerson(${p.id})">保存</button>
+        <span id="crmSaveStatus" style="font-size:11px; color:var(--green); margin-left:8px;"></span>
+      </div>
+      ${siblings.length ? `<div style="margin: 16px 0 8px; font-size:13px; font-weight:600; color: var(--text2);">同一人物的其他平台账号（${siblings.length}）</div>
+        ${siblings.map(s => renderAccount(s)).join('')}` : ''}
+      <div style="margin-top: 20px;">
+        <button class="btn btn-ghost btn-sm" style="color:var(--red); border-color:var(--red);" onclick="deleteAccount(${a.id})">删除此账号</button>
+      </div>
+    `;
+  } catch (e) {
+    document.getElementById('drawerBody').innerHTML = `<div class="error-msg">${escapeHtml(e.message)}</div>`;
+  }
+}
+function closeDrawer() { document.getElementById('drawer').classList.add('hidden'); }
+
+async function savePerson(pid) {
+  const status = document.getElementById('crmStatus').value;
+  const tags = document.getElementById('crmTags').value.split(',').map(s=>s.trim()).filter(Boolean);
+  const owner = document.getElementById('crmOwner').value.trim();
+  const notes = document.getElementById('crmNotes').value;
+  try {
+    const r = await fetch(`/api/db/person/${pid}`, {
+      method:'PATCH', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({status, tags, owner, notes}),
+    });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    document.getElementById('crmSaveStatus').textContent = '✓ 已保存';
+    setTimeout(() => { document.getElementById('crmSaveStatus').textContent=''; }, 2000);
+  } catch (e) { alert('保存失败：' + e.message); }
+}
+
+async function deleteAccount(id) {
+  if (!confirm('删除此账号？如果它是该人物的最后一个账号，会一并删除人物记录。')) return;
+  try {
+    const r = await fetch(`/api/db/account/${id}`, {method:'DELETE'});
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    closeDrawer();
+    loadList();
+    refreshNavStats();
+  } catch (e) { alert('删除失败：' + e.message); }
+}
+
+async function embedMissing() {
+  document.getElementById('opStatus').textContent = '正在生成 embedding…';
+  try {
+    const r = await fetch('/api/db/embed_missing', {method:'POST'});
+    const d = await r.json();
+    document.getElementById('opStatus').textContent = `已为 ${d.updated || 0} 个账号生成 embedding`;
+  } catch (e) { document.getElementById('opStatus').textContent = '失败：' + e.message; }
+}
+
+async function exportExcel() {
+  try {
+    const r = await fetch('/api/db/export', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'creators.xlsx'; a.click();
+    URL.revokeObjectURL(url);
+  } catch (e) { alert('导出失败：' + e.message); }
+}
+
+async function clearDb() {
+  if (!confirm('⚠️  确定要删除全部账号和人物？此操作不可恢复。')) return;
+  try {
+    const r = await fetch('/api/db/clear', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({confirm: true})});
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    loadList();
+    refreshNavStats();
+  } catch (e) { alert('清空失败：' + e.message); }
+}
+
+document.querySelectorAll('.plat-cb').forEach(cb => cb.addEventListener('change', loadList));
+loadList();
+</script>
+{% endblock %}

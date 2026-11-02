@@ -1,0 +1,67 @@
+# COVERAGE: DELETE /api/people/<id> (admin-only) + drawer 🗑 删除客户 button; INTRODUCED: pre-d7c8577
+# ============================================================================
+#  Before：客户进系统后没有整体删除入口，只能挨个删 handle 触发 orphan GC，纯
+#         邮箱客户彻底删不掉。
+#  Fix：  抽屉底部新增红色「🗑 删除客户」按钮（admin-only），调
+#         DELETE /api/people/<id>，并写审计日志。
+# ============================================================================
+
+goto http://localhost:5001/login
+wait_for input#username
+hover input#username
+type input#username "admin"
+hover input#password
+type input#password "admin12345"
+hover button#loginBtn
+click button#loginBtn
+wait_url /similarity
+goto http://localhost:5001/people
+wait_for ".crm-table tbody tr"
+wait_ms 800
+
+eval "(()=>{ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; window.__cap('① 搜出本测试创建的目标客户 RRWebFx Delete Target'); })()"
+wait_ms 2500
+
+hover "#qInput"
+click "#qInput"
+type "#qInput" "RRWebFx Delete Target"
+wait_ms 1200
+assert_count ".crm-table tbody tr" 1
+
+eval "window.__cap('② 点行尾「编辑」打开抽屉，滚到底部找红色「🗑 删除客户」按钮（admin-only）')"
+wait_ms 2500
+
+# Each row's last column has the handles-drawer button labeled "编辑" (or "+ 添加").
+hover ".crm-table tbody tr:first-child .name-display"
+click ".crm-table tbody tr:first-child .name-display"
+wait_for "#drawerName"
+wait_ms 1000
+
+# auto-confirm + suppress alert so the click flow doesn't hang on a native dialog
+eval "window.confirm=(_)=>true; window.alert=(_)=>{};"
+wait_ms 600
+
+scroll "#handlesDrawer button[onclick^=\"onDeletePerson\"]"
+wait_ms 800
+assert_visible "#handlesDrawer button[onclick^=\"onDeletePerson\"]"
+
+eval "window.__cap('③ 点删除 → DELETE /api/people/<id> → 抽屉关闭 → 列表刷新')"
+wait_ms 2000
+
+click "#handlesDrawer button[onclick^=\"onDeletePerson\"]"
+wait_ms 2500
+
+eval "window.__cap('④ 重新搜同一个名字 —— 应该一个客户都搜不到（人和 handle 都硬删除了）')"
+wait_ms 2000
+
+hover "#qInput"
+click "#qInput"
+press "#qInput" Control+a
+press "#qInput" Backspace
+type "#qInput" "RRWebFx Delete Target"
+wait_ms 1500
+# Either zero rows in table or "没有匹配的客户" empty-state
+assert_count ".crm-table tbody tr" 0
+
+eval "window.__cap('✅ 通过：DELETE /api/people/<id> 把人和名下平台账号一起删干净了')"
+wait_ms 3000

@@ -1,0 +1,101 @@
+# COVERAGE: lib/db.py upsert_account placeholder-collapse + templates/people.html 查看 jump; INTRODUCED: d7c8577
+# ============================================================================
+#  Bug 1 (修复前): A 名下挂着 (instagram, 'import:rrwebfx_target') 占位号；在 B 的
+#                 抽屉里输入同一个 handle + 立即抓取 → 后端创建一个全新的孤儿客
+#                 户，名下挂着真实 id 的 IG 账号 → 同一个 handle 两个客户。
+#  根因：       lib/db.py:upsert_account 只按 (platform, platform_user_id) 去重。
+#  Bug 2 (修复前): 冲突方客户的 full_name + email 都是空时，UI 只能显示
+#                 "已属于「id=81908」" —— 找不到那个 id 是谁，跳不过去。
+#
+# 这条录制对修复版本运行，断言两条不变量：
+#   (a) 操作后 @rrwebfx_target 行数仍 = 1（Bug1 不变量）
+#   (b) 冲突 toast 出现 + 查看按钮可跳到真实 owner（Bug2 不变量）
+# ============================================================================
+
+goto http://localhost:5001/login
+wait_for input#username
+hover input#username
+wait_ms 600
+type input#username "admin"
+wait_ms 400
+hover input#password
+type input#password "admin12345"
+wait_ms 400
+hover button#loginBtn
+wait_ms 400
+click button#loginBtn
+wait_url /similarity
+goto http://localhost:5001/people
+wait_for ".crm-table tbody tr"
+wait_ms 1200
+
+# Caption banner (bottom-of-viewport, won't block clicks)
+eval "(()=>{ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; window.__cap('⓪ 修复前症状：Bug1 抓取多出一行；Bug2 冲突提示只能看到 id 数字、跳不过去'); })()"
+wait_ms 4000
+
+eval "window.__cap('演员表：Target = 占位号原主；Self = 来抢同一个 handle 的另一个客户')"
+wait_ms 4000
+
+eval "window.__cap('① 初始状态：列表里只有 1 行挂着 @rrwebfx_target（在 Target 名下，占位）')"
+wait_ms 2500
+assert_count ".crm-table tbody tr:has-text(\"@rrwebfx_target\")" 1
+assert_count ".crm-table tbody tr:has-text(\"RRWebFx Bug1 Self\")" 1
+screenshot 01-initial
+
+eval "window.__cap('② 打开 Self 客户的抽屉 —— bug 之前的入口')"
+wait_ms 2500
+
+hover "text=RRWebFx Bug1 Self"
+wait_ms 600
+click "text=RRWebFx Bug1 Self"
+wait_for "#drawerName"
+wait_ms 1200
+assert_value "#drawerName" "RRWebFx Bug1 Self"
+
+eval "window.__cap('③ 在抽屉里选 Instagram，handle = rrwebfx_target，勾「立即抓取」点添加')"
+wait_ms 2500
+
+select "#newHandlePlatform" "instagram"
+wait_ms 500
+hover "#newHandleUser"
+click "#newHandleUser"
+wait_ms 400
+type "#newHandleUser" "rrwebfx_target"
+wait_ms 800
+hover "#newHandleHydrate"
+wait_ms 800
+hover "#newHandleBtn"
+wait_ms 500
+click "#newHandleBtn"
+
+eval "window.__cap('④ upsert_account 通过占位号反查命中 → 返回 409，显示「已属于另一个客户」+「→ 查看」按钮')"
+wait_ms 4500
+
+wait_text "已属于"
+assert_text "已属于另一个客户"
+assert_text "→ 查看"
+screenshot 02-conflict
+
+eval "window.__cap('⑤ 点击「→ 查看」—— 之前是黑洞，现在能直接跳过去')"
+wait_ms 2500
+
+hover "text=→ 查看"
+wait_ms 800
+click "text=→ 查看"
+wait_ms 2000
+assert_value "#drawerName" "RRWebFx Bug1 Target"
+
+eval "window.__cap('⑥ 抽屉切到了 Target —— Bug2 修复生效')"
+wait_ms 3500
+
+click "#handlesDrawer button:has-text(\"关闭\")"
+wait_ms 1500
+
+eval "window.__cap('⑦ 关闭抽屉看列表：@rrwebfx_target 仍 1 行；Self 仍 1 行 → Bug1 无重复客户')"
+wait_ms 3000
+assert_count ".crm-table tbody tr:has-text(\"@rrwebfx_target\")" 1
+assert_count ".crm-table tbody tr:has-text(\"RRWebFx Bug1 Self\")" 1
+screenshot 03-after
+
+eval "window.__cap('✅ 通过：lib/db.py 占位号收编 + templates/people.html 查看跳转 都生效')"
+wait_ms 4000

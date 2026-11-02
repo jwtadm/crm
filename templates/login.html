@@ -1,0 +1,55 @@
+{% extends "_base.html" %}
+{% set active = "" %}
+{% block title %}登录 — Scout{% endblock %}
+{% block content %}
+<div class="page-header"><h1><span>登录</span></h1></div>
+<div class="card" style="max-width: 420px; margin: 0 auto;">
+  <div class="input-row" style="flex-direction:column; align-items:stretch; gap:10px;">
+    <input type="text" id="username" placeholder="用户名" autocomplete="username">
+    <input type="password" id="password" placeholder="密码" autocomplete="current-password">
+    <label style="font-size:12px; color:var(--text2);">
+      <input type="checkbox" id="remember" style="accent-color: var(--accent); margin-right:6px;">记住我（30 天）
+    </label>
+    <button class="btn btn-accent" id="loginBtn">登录</button>
+    <div id="msg" style="font-size:12px; min-height:18px;"></div>
+    <div style="font-size:12px; color:var(--text2); text-align:center; margin-top:6px;">
+      还没账号？ <a href="/register" style="color:var(--accent);">注册</a> · 忘记密码请联系管理员
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const params = new URLSearchParams(location.search);
+const next = params.get('next') || '/';
+
+async function doLogin() {
+  const username = document.getElementById('username').value.trim();
+  const password = document.getElementById('password').value;
+  const remember = document.getElementById('remember').checked;
+  const msg = document.getElementById('msg');
+  msg.textContent = '';
+  const r = await fetch('/api/auth/login', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({username, password, remember}),
+  });
+  const data = await r.json();
+  if (!r.ok) {
+    if (data.error === 'rate_limited')      msg.innerHTML = '<span style="color:var(--red)">尝试过于频繁，请稍后再试</span>';
+    else if (data.error === 'account_disabled') msg.innerHTML = '<span style="color:var(--red)">账号尚未激活或已被停用</span>';
+    else                                     msg.innerHTML = '<span style="color:var(--red)">用户名或密码错误</span>';
+    return;
+  }
+  if (data.user && data.user.must_change_pw) {
+    location.href = '/change_password';
+  } else {
+    location.href = next;
+  }
+}
+
+document.getElementById('loginBtn').onclick = doLogin;
+['username', 'password'].forEach(id => {
+  document.getElementById(id).addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+});
+</script>
+{% endblock %}

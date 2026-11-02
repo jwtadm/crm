@@ -1,0 +1,100 @@
+# COVERAGE: people.html compose modal — placeholder chips + live preview (two-column); INTRODUCED: post-0d01a43
+# ============================================================================
+#  之前 compose 弹窗写得太开发风：占位符直接显示 {{name}} 这种字符串，普通人看
+#  不懂；预览要点按钮才出来。新版改成左右两列：
+#    左：主题/正文 + 上方一排"插入变量"chip（"客户姓名 / 客户邮箱 / IG handle"
+#       这种人话标签），点 chip 就把对应的 {{token}} 塞到光标处；
+#    右：实时预览面板，输入时 ~400ms 节流刷新，可 ◀▶ 翻 1/2/3 封。
+# ============================================================================
+
+goto http://localhost:5001/login
+wait_for input#username
+hover input#username
+type input#username "admin"
+hover input#password
+type input#password "admin12345"
+hover button#loginBtn
+click button#loginBtn
+wait_url /similarity
+goto http://localhost:5001/people
+wait_for ".crm-table tbody tr"
+wait_ms 800
+
+eval "(()=>{ if(!document.getElementById('__cap')){ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; } window.confirm=(_)=>true; window.alert=(m)=>{ console.log('[alert]', m); }; window.__cap('① 过滤出本测试的两个收件人，勾上 → 打开「群发邮件」'); })()"
+wait_ms 3000
+
+hover "#qInput"
+click "#qInput"
+type "#qInput" "RRWebFx Compose Recipient"
+wait_ms 1500
+assert_count ".crm-table tbody tr" 2
+
+hover ".crm-table tbody tr:nth-child(1) .row-cb"
+click ".crm-table tbody tr:nth-child(1) .row-cb"
+hover ".crm-table tbody tr:nth-child(2) .row-cb"
+click ".crm-table tbody tr:nth-child(2) .row-cb"
+wait_ms 800
+hover "#bulkBtn"
+click "#bulkBtn"
+wait_for "#emailSubject"
+wait_ms 1500
+
+eval "window.__cap('② 弹窗变成左右两列：左侧编辑、右侧实时预览。上方有一排「+ 客户姓名 / + 客户邮箱 / + IG handle」chip')"
+wait_ms 3500
+
+# Sanity: the new layout actually exists
+assert_visible "#placeholderChips"
+assert_visible "#previewBox"
+# 6 placeholder chips (name / email / owner / handle_instagram / handle_x / handle_tiktok)
+assert_count "#placeholderChips button" 6
+
+eval "window.__cap('③ 在主题里点「+ 客户姓名」chip → 自动把 {{name}} 塞进光标处')"
+wait_ms 2500
+
+hover "#emailSubject"
+click "#emailSubject"
+type "#emailSubject" "Hi "
+wait_ms 500
+hover "#placeholderChips button:has-text(\"客户姓名\")"
+wait_ms 400
+click "#placeholderChips button:has-text(\"客户姓名\")"
+wait_ms 800
+assert_value "#emailSubject" "Hi {{name}}"
+
+eval "window.__cap('④ 在正文里也打几个字 + 插「+ IG handle」chip')"
+wait_ms 2500
+
+hover "#emailBody"
+click "#emailBody"
+type "#emailBody" "你好 "
+wait_ms 400
+hover "#placeholderChips button:has-text(\"客户姓名\")"
+click "#placeholderChips button:has-text(\"客户姓名\")"
+wait_ms 400
+type "#emailBody" "，看到你的 "
+wait_ms 400
+hover "#placeholderChips button:has-text(\"IG handle\")"
+click "#placeholderChips button:has-text(\"IG handle\")"
+wait_ms 400
+type "#emailBody" " 内容很喜欢"
+wait_ms 1200
+
+eval "window.__cap('⑤ 右侧实时预览面板应该已经把 {{name}} {{handle_instagram}} 替换成真实收件人信息了')"
+wait_ms 3500
+
+# Live preview should now show one of the two recipients
+wait_text "RRWebFx Compose Recipient"
+assert_text "rrwebfx_compose"
+
+eval "window.__cap('⑥ 翻页：点右上角 ▶ 看下一封预览')"
+wait_ms 2500
+
+hover "#nextPreviewBtn"
+wait_ms 400
+click "#nextPreviewBtn"
+wait_ms 800
+# Pager should show 第 2 / 2 封 (only 2 recipients selected)
+assert_text "第 2"
+
+eval "window.__cap('✅ 通过：chip 插入变量 + 实时预览 + 翻页都对了，没有再出现 {{name}} 这种开发字符')"
+wait_ms 3500

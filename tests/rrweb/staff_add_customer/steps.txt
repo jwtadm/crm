@@ -1,0 +1,71 @@
+# COVERAGE: 员工新增客户 — POST /api/people login_required + auto-assign; INTRODUCED: post-573bca1
+# ============================================================================
+#  问题：之前 POST /api/people 是 @auth.admin_required，「+ 添加客户」按钮也是
+#  admin-only hidden，员工根本看不到入口。这条端到端验证修复后：
+#    1. 普通 staff 登录 /people → 顶部能看到「+ 添加客户」按钮
+#    2. 点开 modal → 填姓名 / 邮箱 / IG handle → 保存
+#    3. 列表里出现新客户，assigned_user_id 自动填了自己（不是「未分配」）
+# ============================================================================
+
+goto http://localhost:5001/login
+wait_for input#username
+hover input#username
+type input#username "rrwebfx_addcust_staff"
+hover input#password
+type input#password "rrwebfx-addcust-pw"
+hover button#loginBtn
+click button#loginBtn
+wait_url /people
+wait_ms 1500
+
+eval "(()=>{ if(!document.getElementById('__cap')){ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; } window.__cap('① 普通 staff 登录 → 「+ 添加客户」按钮现在可见'); })()"
+wait_ms 2500
+
+# Button is now visible to non-admin
+assert_visible "button:has-text(\"+ 添加客户\")"
+
+eval "(()=>{ if(!document.getElementById('__cap')){ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; } window.__cap('② 点开 modal，填 名字 + 邮箱 + IG handle'); })()"
+wait_ms 2500
+
+hover "button:has-text(\"+ 添加客户\")"
+wait_ms 400
+click "button:has-text(\"+ 添加客户\")"
+wait_for "#addName"
+wait_ms 800
+hover "#addName"
+click "#addName"
+type "#addName" "RRWebFx New From Staff"
+wait_ms 400
+hover "#addEmail"
+click "#addEmail"
+type "#addEmail" "rrwebfx_newfromstaff@stub.local"
+wait_ms 400
+hover "#addIG"
+click "#addIG"
+type "#addIG" "rrwebfx_new_ig"
+wait_ms 600
+hover "#addSubmitBtn"
+wait_ms 400
+click "#addSubmitBtn"
+wait_ms 2500
+
+eval "(()=>{ if(!document.getElementById('__cap')){ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; } window.__cap('③ 列表里出现新客户，且 assigned_user_id 自动填了当前 staff'); })()"
+wait_ms 2500
+
+# Search to surface the new row
+hover "#qInput"
+click "#qInput"
+type "#qInput" "RRWebFx New From Staff"
+wait_ms 1500
+assert_count ".crm-table tbody tr" 1
+
+# Verify auto-assignment via /api/auth/me + /api/people/list scoping:
+# As staff, /people only shows rows assigned to them. If the row's visible,
+# it means assigned_user_id == current staff.
+goto http://localhost:5001/api/people/list?q=RRWebFx+New+From+Staff
+wait_text "RRWebFx New From Staff"
+assert_text "RRWebFx New From Staff"
+assert_text "rrwebfx_newfromstaff@stub.local"
+
+eval "(()=>{ if(!document.getElementById('__cap')){ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; } window.__cap('✅ 员工可以加客户，自动 assign 到自己名下，无需 admin'); })()"
+wait_ms 3500

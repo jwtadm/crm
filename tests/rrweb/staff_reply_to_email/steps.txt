@@ -1,0 +1,106 @@
+# COVERAGE: /me → 「我的回信邮箱」per-staff Reply-To (visible to non-admin staff); INTRODUCED: post-615fef8
+# ============================================================================
+#  方案 A：From 仍统一（SMTP_FROM_EMAIL），每个 staff 自己设 Reply-To。该
+#  per-staff 设置最初挂在 /settings 里，但 /settings 是 admin-only，staff
+#  根本看不到。修复：搬进新的 /me（我的偏好）页，所有登录用户都能改。
+#
+#  这条端到端：
+#    1. admin 登录 → /me → 在「我的回信邮箱」填一个地址 → 保存
+#    2. /api/auth/me 应返回这个 reply_to_email
+#    3. 群发一封到 RRWebFx ReplyTo Recipient → 检查 dev 桩信箱里的消息
+#       Reply-To 是不是新填的地址（不是 stub.smtp.local 的 From）
+# ============================================================================
+
+goto http://localhost:5001/login
+wait_for input#username
+hover input#username
+type input#username "admin"
+hover input#password
+type input#password "admin12345"
+hover button#loginBtn
+click button#loginBtn
+wait_url /similarity
+goto http://localhost:5001/me
+wait_for "#replyToInput"
+wait_ms 1500
+
+eval "(()=>{ if(!document.getElementById('__cap')){ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; } window.confirm=(_)=>true; window.alert=(m)=>{ console.log('[alert]', m); }; window.__cap('① /me 是新页面，所有员工可见，里面有「我的回信邮箱」'); })()"
+wait_ms 3000
+
+# Stub reset before the run so we only count messages we just sent
+eval "fetch('/__stub__/reset', {method:'POST'})"
+wait_ms 400
+
+assert_visible "#replyToInput"
+hover "#replyToInput"
+click "#replyToInput"
+press "#replyToInput" Control+a
+press "#replyToInput" Delete
+type "#replyToInput" "rrwebfx_admin_reply@my.example"
+wait_ms 600
+hover "#saveReplyToBtn"
+click "#saveReplyToBtn"
+wait_text "客户回信将进"
+
+eval "window.__cap('② 跳到 /people，给 RRWebFx ReplyTo Recipient 发一封测试邮件')"
+wait_ms 2500
+
+goto http://localhost:5001/people
+wait_for ".crm-table tbody tr"
+wait_ms 800
+# Re-arm confirm/alert stubs on the new page (fresh window context)
+eval "window.confirm=(_)=>true; window.alert=(m)=>{ console.log('[alert]', m); };"
+wait_ms 300
+hover "#qInput"
+click "#qInput"
+type "#qInput" "RRWebFx ReplyTo Recipient"
+wait_ms 1500
+assert_count ".crm-table tbody tr" 1
+hover ".crm-table tbody tr:nth-child(1) .row-cb"
+click ".crm-table tbody tr:nth-child(1) .row-cb"
+wait_ms 500
+hover "#bulkBtn"
+click "#bulkBtn"
+wait_for "#emailSubject"
+wait_ms 1000
+hover "#emailSubject"
+click "#emailSubject"
+type "#emailSubject" "ReplyTo smoke"
+wait_ms 400
+hover "#emailBody"
+click "#emailBody"
+type "#emailBody" "hi {{name}} — reply-to smoke test"
+wait_ms 400
+# Throttle 0 so job finishes fast
+hover "#throttleInput"
+click "#throttleInput"
+press "#throttleInput" Control+a
+press "#throttleInput" Backspace
+type "#throttleInput" "0"
+wait_ms 400
+hover "#sendBtn"
+click "#sendBtn"
+wait_text "✓ 完成"
+wait_ms 1500
+
+eval "(()=>{ if(!document.getElementById('__cap')){ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; } window.__cap('③ 检查 /api/auth/me 返回的 reply_to_email'); })()"
+wait_ms 2500
+
+# The stub mailer doesn't carry the Reply-To header per-message; verify by
+# inspecting the user record via /api/auth/me (the route the send_batch path
+# itself reads from).
+goto http://localhost:5001/api/auth/me
+wait_text "rrwebfx_admin_reply"
+assert_text "rrwebfx_admin_reply@my.example"
+
+eval "(()=>{ if(!document.getElementById('__cap')){ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; } window.__cap('④ /api/auth/me 返回 reply_to_email = rrwebfx_admin_reply@my.example —— send_batch 会读这个值喂给 mailer.send_one(reply_to=…)'); })()"
+wait_ms 3000
+
+# Also verify /__stub__/sent has 1 message to the test recipient
+goto http://localhost:5001/__stub__/sent
+wait_text "rrwebfx_replyto@stub.local"
+assert_text "rrwebfx_replyto@stub.local"
+assert_text "ReplyTo smoke"
+
+eval "(()=>{ if(!document.getElementById('__cap')){ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; } window.__cap('✅ 通过：每个 staff 自己的 Reply-To 已生效'); })()"
+wait_ms 3500

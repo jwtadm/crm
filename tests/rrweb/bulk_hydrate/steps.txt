@@ -1,0 +1,57 @@
+# COVERAGE: /people 批量补全 placeholder → bulk_hydrate worker → upsert_account 占位收编; INTRODUCED: 2026-06-02
+# ============================================================================
+#  端到端：
+#    1. seed.py 种 2 个 已成交 人，各挂一个 IG placeholder
+#    2. 打开 /people，顶部新「🌊 批量补全」卡片只对 admin 可见
+#    3. 点开 → 模态框「待补 placeholder: 2 (instagram:2)」
+#    4. 确认开跑 → 进度卡片接管，cursor 走到 2/2
+#    5. 期望：hydrated=2、errors=0、新插入=0（占位被原地升格）
+# ============================================================================
+
+goto http://localhost:5001/login
+wait_for input#username
+hover input#username
+type input#username "admin"
+hover input#password
+type input#password "admin12345"
+hover button#loginBtn
+click button#loginBtn
+wait_url /similarity
+wait_ms 1500
+
+eval "(()=>{ if(!document.getElementById('__cap')){ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; } window.__cap('① 跳到 /people 顶部「🌊 批量补全」卡片（admin only）'); })()"
+wait_ms 2500
+
+goto http://localhost:5001/people
+wait_for "#hydrateCard:not(.hidden)"
+wait_ms 1500
+
+assert_visible "#hydrateBtn"
+
+eval "(()=>{ if(!document.getElementById('__cap')){ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; } window.__cap('② 点开 → 估算模态框：待补 placeholder: 2（instagram:2）'); })()"
+wait_ms 2500
+
+hover "#hydrateBtn"
+click "#hydrateBtn"
+wait_for "#hydrateModal:not(.hidden)"
+wait_text "待补 placeholder："
+wait_text "instagram:2"
+
+eval "(()=>{ if(!document.getElementById('__cap')){ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; } window.__cap('③ 确认开跑 → 进度卡接管 → worker 串行 fetch_user_info → done'); })()"
+wait_ms 2500
+
+hover "#hydrateConfirmBtn"
+click "#hydrateConfirmBtn"
+wait_for "#hydrateProgress:not(.hidden)"
+wait_for "#hydrateStatus:has-text(\"done\")"
+wait_ms 1500
+
+eval "(()=>{ if(!document.getElementById('__cap')){ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; } window.__cap('④ 期望：cursor=2/2，升格成功=2，出错=0'); })()"
+wait_ms 3000
+
+assert_text "2 / 2"
+
+eval "(()=>{ const t=document.getElementById('hydrateStats').innerText; const m=t.match(/升格成功：\\s*(\\d+)/); if(!m||+m[1]!==2) throw new Error('expected hydrated=2, got: '+JSON.stringify(t)); const me=t.match(/出错：\\s*(\\d+)/); if(!me||+me[1]!==0) throw new Error('expected errors=0, got: '+JSON.stringify(t)); window.__hydStats={hyd:+m[1], err:+me[1]}; })()"
+
+eval "(()=>{ if(!document.getElementById('__cap')){ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; } window.__cap('✅ 通过：'+window.__hydStats.hyd+' 个 placeholder 已升格为真账号'); })()"
+wait_ms 3500

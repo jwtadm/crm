@@ -1,0 +1,68 @@
+# COVERAGE: /similarity page → fetch_similar_users per seed → ingest; INTRODUCED: pre-d7c8577
+# ============================================================================
+#  种子选 + 一键相似发现：
+#    1. /similarity 自动 loadList() 把 DB 里的真实 IG 账号列出来
+#    2. 我们在文字过滤里搜 rrwebfx_simseed，定位到测试种子
+#    3. 点选种子卡片（勾上 .select-cb），点「开始」
+#    4. 后端对每个种子 fetch_similar_users（dev 桩返回 3 个相似）
+#       → ingest.run() 去重 hydrate 入库
+#    5. UI 在 #resultsCard 里展示 stats + 新账号列表，含 rrwebfx_sim_ig_* 命名
+# ============================================================================
+
+goto http://localhost:5001/login
+wait_for input#username
+hover input#username
+type input#username "admin"
+hover input#password
+type input#password "admin12345"
+hover button#loginBtn
+click button#loginBtn
+wait_url /similarity
+wait_for "#dbList"
+wait_ms 1500
+
+eval "(()=>{ if(!document.getElementById('__cap')){ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; } window.__cap('① /similarity 自动加载 DB 中 IG 账号；用文字过滤定位到测试种子'); })()"
+wait_ms 3000
+
+hover "#textFilter"
+click "#textFilter"
+type "#textFilter" "rrwebfx_simseed"
+wait_ms 600
+hover "button:has-text(\"搜索 / 排序\")"
+click "button:has-text(\"搜索 / 排序\")"
+wait_ms 2000
+# Should now show exactly the seed account
+assert_count "#dbList .result-item" 1
+
+eval "window.__cap('② 勾选种子卡片（点 checkbox 或卡片任意位置都行）→ 已选数 +1')"
+wait_ms 2500
+
+hover "#dbList .result-item .select-cb"
+click "#dbList .result-item .select-cb"
+wait_ms 800
+assert_text "已选 1 个种子"
+
+# Reduce 目标新增账号数 to keep this fast
+hover "#countInput"
+click "#countInput"
+press "#countInput" Control+a
+press "#countInput" Backspace
+type "#countInput" "5"
+wait_ms 500
+
+eval "window.__cap('③ 点「开始」→ 后端 fetch_similar_users → ingest → #resultsCard 显示出来')"
+wait_ms 2500
+
+hover "#runBtn"
+click "#runBtn"
+wait_for "#resultsCard:not(.hidden)"
+wait_ms 2000
+
+eval "window.__cap('④ 检查：「新增」stats 至少 1 个 + 列表里有 rrwebfx_sim_ig_* 命名（IG 桩出来的）')"
+wait_ms 3000
+
+wait_text "rrwebfx_sim_ig_"
+assert_text "rrwebfx_sim_ig_"
+
+eval "window.__cap('✅ 通过：选种子 → 相似 API → 入库 一条龙打通')"
+wait_ms 3500

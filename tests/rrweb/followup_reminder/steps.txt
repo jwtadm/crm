@@ -1,0 +1,103 @@
+# COVERAGE: drawer 跟进记录 timeline + 提醒（含到时横幅）; INTRODUCED: post-4516635
+# ============================================================================
+#  新功能：
+#   - 客户抽屉里加「跟进记录」栏 → POST /api/people/<id>/followups
+#   - 同一抽屉里加「设个提醒」→ POST /api/people/<id>/reminders
+#   - 全局横幅每 30s 轮询 /api/reminders/due，到时间的提醒以横幅形式弹出
+#
+#  这条测试覆盖：
+#   1. 打开抽屉，添加一条跟进记录 → 时间线里立刻出现
+#   2. 在抽屉里设一个 *2 秒后* 的提醒 → 等 ~6 秒触发轮询 → 顶部横幅弹出
+#   3. 横幅上点「标记完成」→ 横幅消失
+# ============================================================================
+
+goto http://localhost:5001/login
+wait_for input#username
+hover input#username
+type input#username "admin"
+hover input#password
+type input#password "admin12345"
+hover button#loginBtn
+click button#loginBtn
+wait_url /similarity
+goto http://localhost:5001/people
+wait_for ".crm-table tbody tr"
+wait_ms 800
+
+eval "(()=>{ if(!document.getElementById('__cap')){ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; } window.confirm=(_)=>true; window.alert=(m)=>{ console.log('[alert]', m); }; window.__cap('① 搜出本测试客户 → 打开抽屉'); })()"
+wait_ms 2500
+
+hover "#qInput"
+click "#qInput"
+type "#qInput" "RRWebFx FollowUp Target"
+wait_ms 1500
+assert_count ".crm-table tbody tr" 1
+hover ".crm-table tbody tr:first-child .name-display"
+click ".crm-table tbody tr:first-child .name-display"
+wait_for "#drawerName"
+wait_ms 1500
+
+eval "window.__cap('② 抽屉里有「跟进记录」栏 + 「设个提醒」栏。先加一条跟进记录')"
+wait_ms 2500
+
+assert_visible "#followupInput"
+hover "#followupInput"
+click "#followupInput"
+type "#followupInput" "今天电话沟通，对方对包邮政策最在意"
+wait_ms 500
+hover "#followupList ~ * button.btn-accent, button:has-text(\"＋ 添加\")"
+click "button:has-text(\"＋ 添加\")"
+wait_ms 1500
+wait_text "今天电话沟通"
+assert_text "今天电话沟通"
+
+eval "window.__cap('③ 跟进记录立刻出现在时间线里。再加一条')"
+wait_ms 2500
+
+hover "#followupInput"
+click "#followupInput"
+type "#followupInput" "邮件回复了报价单"
+wait_ms 500
+click "button:has-text(\"＋ 添加\")"
+wait_ms 1500
+assert_text "邮件回复了报价单"
+
+eval "window.__cap('④ 设个 ~5 秒后的提醒 —— 等会儿顶部横幅会自动出现')"
+wait_ms 2500
+
+# Set reminder for ~5 seconds from now
+eval "(()=>{ const t = new Date(Date.now() + 5000); t.setSeconds(t.getSeconds()); const pad = n => String(n).padStart(2,'0'); const iso = t.getFullYear()+'-'+pad(t.getMonth()+1)+'-'+pad(t.getDate())+'T'+pad(t.getHours())+':'+pad(t.getMinutes()); document.getElementById('reminderAt').value = iso; document.getElementById('reminderAt').dispatchEvent(new Event('change')); })()"
+wait_ms 500
+hover "#reminderContent"
+click "#reminderContent"
+type "#reminderContent" "测试提醒：本次自动触发"
+wait_ms 500
+click "button:has-text(\"设提醒\")"
+wait_ms 1500
+# Reminder appears in the drawer's reminder list immediately
+assert_text "测试提醒：本次自动触发"
+
+eval "window.__cap('⑤ 提醒已设。等到时间到（最多 70 秒后轮询触发），顶部横幅会冒出来')"
+wait_ms 2500
+
+# Speed the test up by manually triggering the poll; otherwise we'd wait
+# up to 30s for the next interval tick.
+# First wait until the reminder is actually "due" (~ remind_at <= now)
+wait_ms 6000
+eval "pollDueReminders()"
+wait_ms 1500
+
+# Banner should now exist with our content
+wait_text "提醒到了"
+assert_text "测试提醒：本次自动触发"
+
+eval "window.__cap('⑥ 横幅出现了：「🔔 提醒到了 ... 测试提醒：本次自动触发」。点「标记完成」清掉')"
+wait_ms 3000
+
+hover "#reminderBanner button:has-text(\"标记完成\")"
+wait_ms 500
+click "#reminderBanner button:has-text(\"标记完成\")"
+wait_ms 2000
+# Banner should hide (display:none) after dismiss
+eval "(()=>{ const b = document.getElementById('reminderBanner'); if(!b || b.style.display !== 'none') throw new Error('banner should be hidden after dismiss, got display=' + (b ? b.style.display : 'no-banner')); window.__cap('✅ 通过：跟进记录 timeline + 提醒横幅 + 完成 都正常'); })()"
+wait_ms 4000

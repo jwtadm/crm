@@ -1,0 +1,80 @@
+# COVERAGE: /similarity 客户状态 checkbox filter (joins platform_accounts → people.status); INTRODUCED: post-4516635
+# ============================================================================
+#  /similarity 页之前只能按 username / bio / 平台 过滤种子，没法说"只看已成交
+#  客户名下的账号"。这次加了一行客户状态多选 checkbox，勾上某个状态就只显示
+#  status 匹配的人名下的 platform_accounts。
+#
+#  这条测试种 3 个人：1 个已成交、1 个待联系、1 个已联系，各名下一个真实 IG 账
+#  号。先不过滤看到 3 条，再勾「已成交」只剩 1 条。
+# ============================================================================
+
+goto http://localhost:5001/login
+wait_for input#username
+hover input#username
+type input#username "admin"
+hover input#password
+type input#password "admin12345"
+hover button#loginBtn
+click button#loginBtn
+wait_url /similarity
+wait_for "#dbList"
+wait_ms 1500
+
+eval "(()=>{ if(!document.getElementById('__cap')){ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; } window.__cap('① 文字过滤定位本测试种的 3 个 rrwebfx_*account（已成交 / 待联系 / 已联系 各 1）'); })()"
+wait_ms 3000
+
+hover "#textFilter"
+click "#textFilter"
+type "#textFilter" "rrwebfxaccount"
+wait_ms 600
+press "#textFilter" Backspace
+press "#textFilter" Backspace
+press "#textFilter" Backspace
+press "#textFilter" Backspace
+press "#textFilter" Backspace
+press "#textFilter" Backspace
+press "#textFilter" Backspace
+press "#textFilter" Backspace
+press "#textFilter" Backspace
+press "#textFilter" Backspace
+press "#textFilter" Backspace
+press "#textFilter" Backspace
+press "#textFilter" Backspace
+press "#textFilter" Backspace
+type "#textFilter" "rrwebfx_"
+wait_ms 500
+hover "button:has-text(\"搜索 / 排序\")"
+click "button:has-text(\"搜索 / 排序\")"
+wait_ms 2000
+assert_count "#dbList .result-item" 3
+
+eval "window.__cap('② 勾「客户状态 = 已成交」→ 只剩 1 条（rrwebfx_dealaccount）')"
+wait_ms 2500
+
+hover "label.status-filter:has-text(\"已成交\") input"
+click "label.status-filter:has-text(\"已成交\") input"
+wait_ms 2000
+assert_count "#dbList .result-item" 1
+assert_text "@rrwebfx_dealaccount"
+
+eval "window.__cap('③ 取消勾选「已成交」→ 又看到全部 3 条')"
+wait_ms 2500
+
+hover "label.status-filter:has-text(\"已成交\") input"
+click "label.status-filter:has-text(\"已成交\") input"
+wait_ms 2000
+assert_count "#dbList .result-item" 3
+
+eval "window.__cap('④ 同时勾「已成交」+「待联系」→ 出现 2 条（dealaccount + leadaccount）')"
+wait_ms 2500
+
+hover "label.status-filter:has-text(\"已成交\") input"
+click "label.status-filter:has-text(\"已成交\") input"
+wait_ms 800
+hover "label.status-filter:has-text(\"待联系\") input"
+click "label.status-filter:has-text(\"待联系\") input"
+wait_ms 2000
+assert_count "#dbList .result-item" 2
+
+eval "window.__cap('✅ 通过：客户状态多选筛选生效，可以方便地用已成交客户当种子')"
+wait_ms 3500

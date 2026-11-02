@@ -1,0 +1,64 @@
+# COVERAGE: /similarity 全量找相似 — bulk seed snapshot → serial worker → progress → done; INTRODUCED: 2026-06-02
+# ============================================================================
+#  一键全量找相似的端到端：
+#    1. seed.py 种两个已成交客户名下的 IG 账号
+#    2. 打开 /similarity，顶部新卡片显示「🌐 全量找相似」按钮
+#    3. 点开 → 模态框显示「种子数：2（instagram:2）」+ 状态默认勾「已成交/已回复/已联系」
+#    4. 点「确认开跑」 → 进度卡片接管 launcher，#bulkStatus 文字从 running 变 done
+#    5. 期望 progress.new > 0（IG 桩对每个种子返回 3 个相似 → 共 6 新候选）
+# ============================================================================
+
+goto http://localhost:5001/login
+wait_for input#username
+hover input#username
+type input#username "admin"
+hover input#password
+type input#password "admin12345"
+hover button#loginBtn
+click button#loginBtn
+wait_url /similarity
+wait_for "#bulkCard"
+wait_ms 1500
+
+eval "(()=>{ if(!document.getElementById('__cap')){ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; } window.__cap('① /similarity 顶部出现「🌐 全量找相似」按钮（admin 可见）'); })()"
+wait_ms 2500
+
+assert_visible "#bulkBtn"
+
+eval "window.__cap('② 点开按钮 → 估算模态框：种子数=2（instagram:2），默认勾「已成交/已回复/已联系」')"
+wait_ms 2500
+
+hover "#bulkBtn"
+click "#bulkBtn"
+wait_for "#bulkModal:not(.hidden)"
+wait_ms 1500
+
+# 等估算返回（refreshBulkEstimate 完成后会替换 '加载中…'）
+wait_text "种子数：2"
+assert_text "种子数：2"
+assert_text "instagram:2"
+
+eval "window.__cap('③ 点「确认开跑」→ 进度卡片接管，#bulkStatus 从 running 变 done')"
+wait_ms 2500
+
+hover "#bulkConfirmBtn"
+click "#bulkConfirmBtn"
+wait_for "#bulkProgress:not(.hidden)"
+wait_ms 1500
+
+# Worker is serial + each seed has 3 stub sims → 2 seeds × few hundred ms.
+# Status text starts "running"; wait_for the "done" state. Polling fires every 2s.
+wait_for "#bulkStatus:has-text(\"done\")"
+wait_ms 1500
+
+eval "window.__cap('④ 校验：cursor = 2/2，progress.new > 0')"
+wait_ms 2500
+
+# Cursor 显示 "2 / 2"
+assert_text "2 / 2"
+
+# 关键断言：新增数 > 0。stats-bar 第二个 .stat 是「新增：N」
+eval "(()=>{ const t=document.getElementById('bulkStats').innerText; const m=t.match(/新增：\\s*(\\d+)/); if(!m||+m[1]<=0) throw new Error('expected new>0, got: '+JSON.stringify(t)); window.__bulkNew=+m[1]; })()"
+
+eval "window.__cap('✅ 通过：种子 2 → fetch_similar (桩) → ingest → done，progress.new = '+window.__bulkNew)"
+wait_ms 3500

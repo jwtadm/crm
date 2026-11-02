@@ -1,0 +1,69 @@
+# COVERAGE: /people 搜索框现在也匹配 platform_accounts.username（带不带 @ 都行）; INTRODUCED: 2026-06-03
+# ============================================================================
+#  端到端：
+#    1. seed 2 个人，handle 是 rrwebfx_searchhandle_one / _two；姓名里没出现 handle 字样
+#    2. 搜 "rrwebfx_searchhandle_one"（无 @）→ 应只匹配第 1 行
+#    3. 搜 "@rrwebfx_searchhandle_two"（带 @）→ 应只匹配第 2 行（验证 @ 剥离）
+#    4. 搜 "rrwebfx_searchhandle"（共同前缀）→ 应匹配 2 行
+# ============================================================================
+
+goto http://localhost:5001/login
+wait_for input#username
+hover input#username
+type input#username "admin"
+hover input#password
+type input#password "admin12345"
+hover button#loginBtn
+click button#loginBtn
+wait_url /similarity
+wait_ms 1500
+
+eval "(()=>{ if(!document.getElementById('__cap')){ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; } window.__cap('① 跳到 /people，搜 handle "rrwebfx_searchhandle_one" → 只命中第 1 个'); })()"
+wait_ms 2500
+
+goto http://localhost:5001/people
+wait_for "#qInput"
+wait_ms 1500
+
+# placeholder 文案应该包含「账号名」字样（placeholder 是 attr 不在可见文本里，用 eval 直接读）
+eval "(()=>{ const ph = document.getElementById('qInput').placeholder || ''; if (!ph.includes('账号名')) throw new Error('placeholder missing 账号名, got: '+JSON.stringify(ph)); })()"
+
+hover "#qInput"
+click "#qInput"
+type "#qInput" "rrwebfx_searchhandle_one"
+wait_ms 800
+# debouncedLoad 默认 200ms 防抖，等加载完
+wait_ms 1200
+
+# 应当只有 1 行
+assert_count ".crm-table tbody tr" 1
+assert_text "RRWebFx Search By Handle Alpha"
+
+eval "(()=>{ if(!document.getElementById('__cap')){ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; } window.__cap('② 搜 "@rrwebfx_searchhandle_two"（带 @ 验剥离）→ 命中第 2 个'); })()"
+wait_ms 2500
+
+# 清空 + 重打带 @ 的搜索
+click "#qInput"
+press "#qInput" Control+a
+press "#qInput" Backspace
+wait_ms 300
+type "#qInput" "@rrwebfx_searchhandle_two"
+wait_ms 1200
+
+assert_count ".crm-table tbody tr" 1
+assert_text "RRWebFx Search By Handle Beta"
+
+eval "(()=>{ if(!document.getElementById('__cap')){ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; } window.__cap('③ 搜共同前缀 "rrwebfx_searchhandle" → 命中 2 个'); })()"
+wait_ms 2500
+
+click "#qInput"
+press "#qInput" Control+a
+press "#qInput" Backspace
+wait_ms 300
+type "#qInput" "rrwebfx_searchhandle"
+wait_ms 1200
+
+assert_count ".crm-table tbody tr" 2
+
+eval "(()=>{ if(!document.getElementById('__cap')){ const b=document.createElement('div'); b.id='__cap'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:14px 24px;font:600 18px/1.4 system-ui;text-align:center;box-shadow:0 -4px 12px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(b); window.__cap=(t)=>{document.getElementById('__cap').textContent=t}; } window.__cap('✅ 通过：搜账号名（带不带 @ 都行）'); })()"
+wait_ms 3500
