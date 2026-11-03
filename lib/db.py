@@ -77,7 +77,10 @@ CREATE INDEX IF NOT EXISTS idx_people_status ON people(status);
 CREATE INDEX IF NOT EXISTS idx_people_assigned ON people(assigned_user_id);
 CREATE INDEX IF NOT EXISTS idx_people_created_at ON people(created_at);
 CREATE INDEX IF NOT EXISTS idx_people_updated_at ON people(updated_at);
+CREATE INDEX IF NOT EXISTS idx_people_last_contacted ON people(last_contacted_at);  -- default sort column
 CREATE INDEX IF NOT EXISTS idx_pa_follower ON platform_accounts(follower_count);
+CREATE INDEX IF NOT EXISTS idx_email_log_person ON email_log(person_id);            -- stats JOIN
+CREATE INDEX IF NOT EXISTS idx_followup_actor ON followup_logs(actor_id, created_at);
 
 CREATE TABLE IF NOT EXISTS email_log (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -224,6 +227,9 @@ def _apply_migrations(c: sqlite3.Connection) -> None:
         c.execute("ALTER TABLE platform_accounts ADD COLUMN rejected_by INTEGER REFERENCES users(id)")
     if "rejected_at" not in accounts:
         c.execute("ALTER TABLE platform_accounts ADD COLUMN rejected_at INTEGER")
+    # Performance indexes for migrated columns (safe to run multiple times)
+    c.execute("CREATE INDEX IF NOT EXISTS idx_pa_is_rejected ON platform_accounts(is_rejected, rejected_at)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_pa_country ON platform_accounts(country)")
 
     # status_events table — create if missing (for existing databases)
     existing_tables = {r[0] for r in c.execute(
@@ -247,9 +253,13 @@ def _apply_migrations(c: sqlite3.Connection) -> None:
 # ---------- connection ----------
 
 def _conn() -> sqlite3.Connection:
-    c = sqlite3.connect(DB_PATH)
+    c = sqlite3.connect(str(DB_PATH), timeout=30)
     c.row_factory = sqlite3.Row
+    c.execute("PRAGMA journal_mode = WAL")        # concurrent reads while writing
+    c.execute("PRAGMA busy_timeout = 30000")      # wait up to 30s for locks
     c.execute("PRAGMA foreign_keys = ON")
+    c.execute("PRAGMA cache_size = -64000")       # 64MB page cache (default is 2MB)
+    c.execute("PRAGMA temp_store = MEMORY")
     return c
 
 
@@ -750,31 +760,84 @@ def list_people(
         "followers":      "agg.max_followers DESC NULLS LAST, p.updated_at DESC",
     }.get(order, "p.last_contacted_at DESC NULLS LAST, p.updated_at DESC")
 
-    rows = c.execute(
-        f"""
-        SELECT p.id, p.email, p.full_name, p.status, p.tags, p.notes, p.owner,
-               p.assigned_user_id, p.previous_status, p.intent,
-               p.last_contacted_at, p.created_at, p.updated_at,
-               u.username AS assigned_username, u.display_name AS assigned_display_name,
-               agg.handles_blob,
-               COALESCE(agg.account_count, 0) AS account_count,
-               agg.max_followers
-          FROM people p
-          LEFT JOIN users u ON u.id = p.assigned_user_id
-          LEFT JOIN (
-              SELECT person_id,
-                     GROUP_CONCAT(platform || ':' || username, '|') AS handles_blob,
-                     COUNT(*) AS account_count,
-                     MAX(follower_count) AS max_followers
-                FROM platform_accounts
-               GROUP BY person_id
-          ) agg ON agg.person_id = p.id
-         WHERE {where_sql}
-         ORDER BY {order_sql}
-         LIMIT ? OFFSET ?
-        """,
-        [*args, limit, offset],
-    ).fetchall()
+    # Two-phase query: first get the paginated people, then aggregate only for those IDs.
+    # This avoids scanning the entire platform_accounts table on every page load.
+    if order == "followers":
+        # For followers sort, we need the aggregation in the ORDER BY, so use the old approach
+        # but still limit it to the paginated result
+        rows = c.execute(
+            f"""
+            SELECT p.id, p.email, p.full_name, p.status, p.tags, p.notes, p.owner,
+                   p.assigned_user_id, p.previous_status, p.intent,
+                   p.last_contacted_at, p.created_at, p.updated_at,
+                   u.username AS assigned_username, u.display_name AS assigned_display_name,
+                   agg.handles_blob,
+                   COALESCE(agg.account_count, 0) AS account_count,
+                   agg.max_followers
+              FROM people p
+              LEFT JOIN users u ON u.id = p.assigned_user_id
+              LEFT JOIN (
+                  SELECT person_id,
+                         GROUP_CONCAT(platform || ':' || username, '|') AS handles_blob,
+                         COUNT(*) AS account_count,
+                         MAX(follower_count) AS max_followers
+                    FROM platform_accounts
+                   GROUP BY person_id
+              ) agg ON agg.person_id = p.id
+             WHERE {where_sql}
+             ORDER BY {order_sql}
+             LIMIT ? OFFSET ?
+            """,
+            [*args, limit, offset],
+        ).fetchall()
+    else:
+        # Fast path: paginate first, then aggregate only for the result set
+        people_rows = c.execute(
+            f"""
+            SELECT p.id, p.email, p.full_name, p.status, p.tags, p.notes, p.owner,
+                   p.assigned_user_id, p.previous_status, p.intent,
+                   p.last_contacted_at, p.created_at, p.updated_at,
+                   u.username AS assigned_username, u.display_name AS assigned_display_name
+              FROM people p
+              LEFT JOIN users u ON u.id = p.assigned_user_id
+             WHERE {where_sql}
+             ORDER BY {order_sql}
+             LIMIT ? OFFSET ?
+            """,
+            [*args, limit, offset],
+        ).fetchall()
+
+        if not people_rows:
+            return [], total
+
+        # Now aggregate only for the people in this page
+        person_ids = [r["id"] for r in people_rows]
+        placeholders = ",".join("?" * len(person_ids))
+        agg_rows = c.execute(
+            f"""
+            SELECT person_id,
+                   GROUP_CONCAT(platform || ':' || username, '|') AS handles_blob,
+                   COUNT(*) AS account_count,
+                   MAX(follower_count) AS max_followers
+              FROM platform_accounts
+             WHERE person_id IN ({placeholders})
+             GROUP BY person_id
+            """,
+            person_ids,
+        ).fetchall()
+
+        # Build a lookup for aggregation data
+        agg_map = {r["person_id"]: dict(r) for r in agg_rows}
+
+        # Merge aggregation into people rows
+        rows = []
+        for r in people_rows:
+            d = dict(r)
+            agg = agg_map.get(d["id"], {})
+            d["handles_blob"] = agg.get("handles_blob", "")
+            d["account_count"] = agg.get("account_count", 0)
+            d["max_followers"] = agg.get("max_followers")
+            rows.append(d)
 
     out: list[dict] = []
     for r in rows:
@@ -975,55 +1038,82 @@ def get_daily_overview(c: sqlite3.Connection, start_ts: int, end_ts: int,
         ).fetchone()
         status_changes[status] = row["n"] if row else 0
 
-    # Per-user breakdown
+    # Per-user breakdown — use GROUP BY queries instead of per-user loops (N+1 fix)
     per_user = []
     users = c.execute(
         "SELECT id, username, display_name FROM users WHERE is_active = 1 ORDER BY display_name"
     ).fetchall()
+    user_map = {u["id"]: u for u in users}
+
+    # Batch all per-user counts into single GROUP BY queries
+    u_new_map = {}
+    for r in c.execute(
+        """SELECT assigned_user_id, COUNT(*) AS n FROM people
+           WHERE created_at >= ? AND created_at < ?
+           GROUP BY assigned_user_id""",
+        (start_ts, end_ts),
+    ).fetchall():
+        u_new_map[r["assigned_user_id"]] = r["n"]
+
+    u_contacted_map = {}
+    for r in c.execute(
+        """SELECT assigned_user_id, COUNT(*) AS n FROM people
+           WHERE last_contacted_at >= ? AND last_contacted_at < ?
+           GROUP BY assigned_user_id""",
+        (start_ts, end_ts),
+    ).fetchall():
+        u_contacted_map[r["assigned_user_id"]] = r["n"]
+
+    u_emails_map = {}
+    for r in c.execute(
+        """SELECT p.assigned_user_id, COUNT(*) AS n FROM email_log el
+           JOIN people p ON p.id = el.person_id
+           WHERE el.sent_at >= ? AND el.sent_at < ?
+           GROUP BY p.assigned_user_id""",
+        (start_ts, end_ts),
+    ).fetchall():
+        u_emails_map[r["assigned_user_id"]] = r["n"]
+
+    u_followups_map = {}
+    for r in c.execute(
+        """SELECT actor_id AS assigned_user_id, COUNT(*) AS n FROM followup_logs
+           WHERE created_at >= ? AND created_at < ?
+           GROUP BY actor_id""",
+        (start_ts, end_ts),
+    ).fetchall():
+        u_followups_map[r["assigned_user_id"]] = r["n"]
+
+    u_status_map = {}  # {(user_id, status): count}
+    for r in c.execute(
+        """SELECT se.actor_id, se.new_status, COUNT(*) AS n FROM status_events se
+           WHERE se.created_at >= ? AND se.created_at < ?
+           AND se.new_status IN ('已联系','已回复','已成交','不适合')
+           GROUP BY se.actor_id, se.new_status""",
+        (start_ts, end_ts),
+    ).fetchall():
+        u_status_map[(r["actor_id"], r["new_status"])] = r["n"]
+
+    u_total_map = {}
+    for r in c.execute(
+        "SELECT assigned_user_id, COUNT(*) AS n FROM people GROUP BY assigned_user_id"
+    ).fetchall():
+        u_total_map[r["assigned_user_id"]] = r["n"]
+
     for u in users:
         uid = u["id"]
-        u_new = c.execute(
-            "SELECT COUNT(*) AS n FROM people WHERE assigned_user_id=? AND created_at >= ? AND created_at < ?",
-            (uid, start_ts, end_ts),
-        ).fetchone()["n"]
-        u_contacted = c.execute(
-            """SELECT COUNT(*) AS n FROM people
-               WHERE assigned_user_id=? AND last_contacted_at >= ? AND last_contacted_at < ?""",
-            (uid, start_ts, end_ts),
-        ).fetchone()["n"]
-        u_emails = c.execute(
-            """SELECT COUNT(*) AS n FROM email_log
-               WHERE person_id IN (SELECT id FROM people WHERE assigned_user_id=?)
-               AND sent_at >= ? AND sent_at < ?""",
-            (uid, start_ts, end_ts),
-        ).fetchone()["n"]
-        u_followups = c.execute(
-            """SELECT COUNT(*) AS n FROM followup_logs
-               WHERE actor_id=? AND created_at >= ? AND created_at < ?""",
-            (uid, start_ts, end_ts),
-        ).fetchone()["n"]
-        u_status_changes = {}
-        for status in ["已联系", "已回复", "已成交", "不适合"]:
-            row = c.execute(
-                """SELECT COUNT(*) AS n FROM status_events
-                   WHERE actor_id=? AND new_status=? AND created_at >= ? AND created_at < ?""",
-                (uid, status, start_ts, end_ts),
-            ).fetchone()
-            u_status_changes[status] = row["n"] if row else 0
-        # Total customers assigned
-        u_total = c.execute(
-            "SELECT COUNT(*) AS n FROM people WHERE assigned_user_id=?",
-            (uid,),
-        ).fetchone()["n"]
+        u_status_changes = {
+            s: u_status_map.get((uid, s), 0)
+            for s in ["已联系", "已回复", "已成交", "不适合"]
+        }
         per_user.append({
             "user_id": uid,
             "username": u["username"],
             "display_name": u["display_name"] or u["username"],
-            "total_customers": u_total,
-            "new_customers": u_new,
-            "contacted": u_contacted,
-            "emails_sent": u_emails,
-            "followups": u_followups,
+            "total_customers": u_total_map.get(uid, 0),
+            "new_customers": u_new_map.get(uid, 0),
+            "contacted": u_contacted_map.get(uid, 0),
+            "emails_sent": u_emails_map.get(uid, 0),
+            "followups": u_followups_map.get(uid, 0),
             "status_changes": u_status_changes,
         })
 
@@ -1031,50 +1121,21 @@ def get_daily_overview(c: sqlite3.Connection, start_ts: int, end_ts: int,
     # row so the per-user table total matches the pipeline total. Only makes
     # sense when NOT filtering to a specific user.
     if user_id is None:
-        unassigned = c.execute(
-            "SELECT COUNT(*) AS n FROM people WHERE assigned_user_id IS NULL"
-        ).fetchone()["n"]
+        unassigned = u_total_map.get(None, 0)
         if unassigned > 0:
-            ua_new = c.execute(
-                "SELECT COUNT(*) AS n FROM people WHERE assigned_user_id IS NULL AND created_at >= ? AND created_at < ?",
-                (start_ts, end_ts),
-            ).fetchone()["n"]
-            ua_contacted = c.execute(
-                """SELECT COUNT(*) AS n FROM people
-                   WHERE assigned_user_id IS NULL AND last_contacted_at >= ? AND last_contacted_at < ?""",
-                (start_ts, end_ts),
-            ).fetchone()["n"]
-            ua_emails = c.execute(
-                """SELECT COUNT(*) AS n FROM email_log el
-                   JOIN people p ON p.id = el.person_id
-                   WHERE p.assigned_user_id IS NULL AND el.sent_at >= ? AND el.sent_at < ?""",
-                (start_ts, end_ts),
-            ).fetchone()["n"]
-            ua_followups = c.execute(
-                """SELECT COUNT(*) AS n FROM followup_logs f
-                   JOIN people p ON p.id = f.person_id
-                   WHERE p.assigned_user_id IS NULL AND f.created_at >= ? AND f.created_at < ?""",
-                (start_ts, end_ts),
-            ).fetchone()["n"]
-            ua_status_changes = {}
-            for status in ["已联系", "已回复", "已成交", "不适合"]:
-                row = c.execute(
-                    """SELECT COUNT(*) AS n FROM status_events se
-                       JOIN people p ON p.id = se.person_id
-                       WHERE p.assigned_user_id IS NULL AND se.new_status=?
-                       AND se.created_at >= ? AND se.created_at < ?""",
-                    (status, start_ts, end_ts),
-                ).fetchone()
-                ua_status_changes[status] = row["n"] if row else 0
+            ua_status_changes = {
+                s: u_status_map.get((None, s), 0)
+                for s in ["已联系", "已回复", "已成交", "不适合"]
+            }
             per_user.append({
                 "user_id": None,
                 "username": "",
                 "display_name": "未分配",
                 "total_customers": unassigned,
-                "new_customers": ua_new,
-                "contacted": ua_contacted,
-                "emails_sent": ua_emails,
-                "followups": ua_followups,
+                "new_customers": u_new_map.get(None, 0),
+                "contacted": u_contacted_map.get(None, 0),
+                "emails_sent": u_emails_map.get(None, 0),
+                "followups": u_followups_map.get(None, 0),
                 "status_changes": ua_status_changes,
             })
 

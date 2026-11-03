@@ -49,6 +49,39 @@ cache = Cache(app)
 db.init_db()
 settings.init()
 
+
+# ---------- JSON error handlers for API routes ----------
+# Without these, Flask/Werkzeug returns HTML error pages for any unhandled
+# exception, causing "JSON.parse: unexpected character" in the browser.
+
+@app.errorhandler(404)
+def _err_404(e):
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "not_found"}), 404
+    return e
+
+@app.errorhandler(405)
+def _err_405(e):
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "method_not_allowed"}), 405
+    return e
+
+@app.errorhandler(500)
+def _err_500(e):
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "internal_error"}), 500
+    return e
+
+@app.errorhandler(Exception)
+def _err_unhandled(e):
+    """Catch-all: return JSON for API routes instead of HTML."""
+    import traceback
+    traceback.print_exc()
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "internal_error", "detail": str(e)}), 500
+    # Let Flask handle non-API routes normally (HTML error page / redirect)
+    raise e
+
 # Auto-bootstrap: if there is no active admin, create admin/admin with
 # must_change_pw=1 so the operator can log in immediately and is forced to
 # pick a real password before doing anything else.
