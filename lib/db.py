@@ -253,7 +253,7 @@ def _apply_migrations(c: sqlite3.Connection) -> None:
 # ---------- connection ----------
 
 def _conn() -> sqlite3.Connection:
-    c = sqlite3.connect(str(DB_PATH), timeout=30)
+    c = sqlite3.connect(str(DB_PATH), timeout=30, isolation_level=None)
     c.row_factory = sqlite3.Row
     c.execute("PRAGMA journal_mode = WAL")        # concurrent reads while writing
     c.execute("PRAGMA busy_timeout = 30000")      # wait up to 30s for locks
@@ -267,15 +267,19 @@ def init_db() -> None:
     with _conn() as c:
         c.executescript(SCHEMA)
         _apply_migrations(c)
-        c.commit()
 
 
 @contextmanager
 def tx():
+    """Write transaction context. Autocommit mode means we must BEGIN explicitly."""
     c = _conn()
     try:
+        c.execute("BEGIN IMMEDIATE")
         yield c
-        c.commit()
+        c.execute("COMMIT")
+    except Exception:
+        c.execute("ROLLBACK")
+        raise
     finally:
         c.close()
 
