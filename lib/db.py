@@ -72,6 +72,12 @@ CREATE TABLE IF NOT EXISTS platform_accounts (
 CREATE INDEX IF NOT EXISTS idx_pa_username ON platform_accounts(platform, username);
 CREATE INDEX IF NOT EXISTS idx_pa_person   ON platform_accounts(person_id);
 CREATE INDEX IF NOT EXISTS idx_people_email ON people(email);
+-- Performance indexes for common queries (filtering/sorting)
+CREATE INDEX IF NOT EXISTS idx_people_status ON people(status);
+CREATE INDEX IF NOT EXISTS idx_people_assigned ON people(assigned_user_id);
+CREATE INDEX IF NOT EXISTS idx_people_created_at ON people(created_at);
+CREATE INDEX IF NOT EXISTS idx_people_updated_at ON people(updated_at);
+CREATE INDEX IF NOT EXISTS idx_pa_follower ON platform_accounts(follower_count);
 
 CREATE TABLE IF NOT EXISTS email_log (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -741,7 +747,7 @@ def list_people(
         # created_at，因为后者可能撞秒。
         "created_asc":    "p.id ASC",
         "name":           "p.full_name COLLATE NOCASE ASC",
-        "followers":      "(SELECT MAX(follower_count) FROM platform_accounts pa WHERE pa.person_id = p.id) DESC NULLS LAST, p.updated_at DESC",
+        "followers":      "agg.max_followers DESC NULLS LAST, p.updated_at DESC",
     }.get(order, "p.last_contacted_at DESC NULLS LAST, p.updated_at DESC")
 
     rows = c.execute(
@@ -750,12 +756,19 @@ def list_people(
                p.assigned_user_id, p.previous_status, p.intent,
                p.last_contacted_at, p.created_at, p.updated_at,
                u.username AS assigned_username, u.display_name AS assigned_display_name,
-               (SELECT GROUP_CONCAT(pa.platform || ':' || pa.username, '|')
-                  FROM platform_accounts pa WHERE pa.person_id = p.id) AS handles_blob,
-               (SELECT COUNT(*) FROM platform_accounts pa WHERE pa.person_id = p.id) AS account_count,
-               (SELECT MAX(follower_count) FROM platform_accounts pa WHERE pa.person_id = p.id) AS max_followers
+               agg.handles_blob,
+               COALESCE(agg.account_count, 0) AS account_count,
+               agg.max_followers
           FROM people p
           LEFT JOIN users u ON u.id = p.assigned_user_id
+          LEFT JOIN (
+              SELECT person_id,
+                     GROUP_CONCAT(platform || ':' || username, '|') AS handles_blob,
+                     COUNT(*) AS account_count,
+                     MAX(follower_count) AS max_followers
+                FROM platform_accounts
+               GROUP BY person_id
+          ) agg ON agg.person_id = p.id
          WHERE {where_sql}
          ORDER BY {order_sql}
          LIMIT ? OFFSET ?

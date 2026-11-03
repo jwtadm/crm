@@ -1,4 +1,6 @@
 flask>=3.0
+flask-caching>=2.0
+flask-compress>=1.13
 requests>=2.31
 openpyxl>=3.1
 openai>=1.0

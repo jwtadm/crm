@@ -13,6 +13,8 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 
 from flask import Flask, request, jsonify, send_file, render_template, redirect
+from flask_caching import Cache
+from flask_compress import Compress
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
@@ -35,6 +37,14 @@ try:
 except Exception:
     app.secret_key = _secrets.token_bytes(32)
 app.permanent_session_lifetime = timedelta(days=30)  # honored only when remember-me
+
+# Enable gzip compression for all responses
+Compress(app)
+
+# Simple in-memory cache for expensive operations
+app.config['CACHE_TYPE'] = 'SimpleCache'
+app.config['CACHE_DEFAULT_TIMEOUT'] = 60  # 60 seconds default
+cache = Cache(app)
 
 db.init_db()
 settings.init()
@@ -1414,6 +1424,7 @@ def api_settings_test():
 #  DB browse / list / single
 # ============================================================
 
+@cache.cached(timeout=30, key_prefix='db_stats')
 def _stats() -> dict:
     with db.tx() as c:
         return db.count_accounts(c)
