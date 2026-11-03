@@ -126,7 +126,12 @@ function resetFilter() {
   loadList();
 }
 
+// Sequence guard: rapid filter/checkbox changes fire overlapping requests; an
+// older response landing late would overwrite `allAccounts` with stale rows.
+let _listSeq = 0;
+
 async function loadList() {
+  const seq = ++_listSeq;
   const text = document.getElementById('textFilter').value.trim();
   const desc = document.getElementById('descInput').value.trim();
   const plats = [...document.querySelectorAll('.plat-cb:checked')].map(cb => cb.value);
@@ -140,10 +145,12 @@ async function loadList() {
   try {
     const r = await fetch('/api/db/list?' + params.toString());
     const d = await r.json();
+    if (seq !== _listSeq) return;   // superseded by a newer request
     if (d.error) throw new Error(d.error);
     allAccounts = d.accounts || [];
     renderList();
   } catch (e) {
+    if (seq !== _listSeq) return;   // aborted or superseded — don't clobber the UI
     document.getElementById('dbList').innerHTML = `<div class="error-msg">${escapeHtml(e.message)}</div>`;
   }
 }

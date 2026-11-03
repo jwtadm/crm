@@ -41,7 +41,13 @@ const STATUS_LABEL = {lead: '潜在客户', contacted: '已联系', replied: '�
 let _t = null;
 function debouncedLoad() { clearTimeout(_t); _t = setTimeout(loadList, 300); }
 
+// Sequence guard: rapid filter changes fire overlapping requests; without this
+// an older, slower response can land after a newer one and overwrite the list
+// with stale data (the "why am I seeing the previous filter's rows" bug).
+let _listSeq = 0;
+
 async function loadList() {
+  const seq = ++_listSeq;
   const text = document.getElementById('textFilter').value.trim();
   const desc = document.getElementById('descInput').value.trim();
   const plats = [...document.querySelectorAll('.plat-cb:checked')].map(cb => cb.value);
@@ -54,6 +60,7 @@ async function loadList() {
   try {
     const r = await fetch('/api/db/list?' + params.toString());
     const d = await r.json();
+    if (seq !== _listSeq) return;   // superseded by a newer request
     if (d.error) throw new Error(d.error);
     const showScore = !!desc;
     document.getElementById('dbList').innerHTML = (d.accounts||[]).length
@@ -67,6 +74,7 @@ async function loadList() {
       it.style.cursor = 'pointer';
     });
   } catch (e) {
+    if (seq !== _listSeq) return;   // aborted or superseded — don't clobber the UI
     document.getElementById('dbList').innerHTML = `<div class="error-msg">${escapeHtml(e.message)}</div>`;
   }
 }

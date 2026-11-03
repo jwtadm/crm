@@ -371,7 +371,13 @@ function rememberActiveRow(pid) {
   _activeRowPid = +pid || null;
 }
 
+// Sequence guard: typing in search / flipping filters / paging fires overlapping
+// requests. Without this an older response can land last and repaint the table
+// with the previous filter's rows (and restore a stale scroll position).
+let _listSeq = 0;
+
 async function loadList() {
+  const seq = ++_listSeq;
   const q = document.getElementById('qInput').value.trim();
   const status = document.getElementById('statusSel').value;
   const has_platform = document.getElementById('platSel').value;
@@ -394,6 +400,7 @@ async function loadList() {
   try {
     const r = await fetch('/api/people/list?' + params.toString());
     const d = await r.json();
+    if (seq !== _listSeq) return;   // superseded by a newer request
     if (d.error) throw new Error(d.error);
     _total = d.total || 0;
     renderTable(d.people || []);
@@ -419,6 +426,7 @@ async function loadList() {
       }
     });
   } catch (e) {
+    if (seq !== _listSeq) return;   // aborted or superseded — don't clobber the UI
     document.getElementById('tableWrap').innerHTML = `<div class="error-msg">${escapeHtml(e.message)}</div>`;
   }
 }

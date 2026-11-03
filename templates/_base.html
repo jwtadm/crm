@@ -65,8 +65,14 @@ window.fetch = function(url, opts = {}) {
   if (!opts.signal) opts.signal = _pageAC.signal;
   return _origFetch.call(this, url, opts);
 };
-window.addEventListener('beforeunload', () => { _pageAC.abort(); });
-// Helper for polling code: create sub-controllers linked to page lifecycle
+// pagehide covers real navigation AND bfcache entry (beforeunload does not
+// fire for bfcache in some browsers, leaving requests running after leaving).
+window.addEventListener('pagehide', () => { _pageAC.abort(); });
+// On bfcache restore the document returns with an already-aborted controller,
+// which would make every later fetch fail instantly. Hand it a fresh one.
+window.addEventListener('pageshow', (e) => {
+  if (e.persisted) _pageAC = new AbortController();
+});
 function pageSignal() { return _pageAC.signal; }
 function applyRoleVisibility() {
   const isAdmin = window.CURRENT_USER && window.CURRENT_USER.role === 'admin';
