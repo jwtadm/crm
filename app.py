@@ -1591,17 +1591,21 @@ def api_db_list():
     statuses = [s for s in statuses_raw.split(",") if s] or None
     limit = int(request.args.get("limit") or 200)
 
+    # Only load heavy columns (raw JSON + embeddings) when description rerank needs them
+    need_embeddings = bool(description)
+
     with db.tx() as c:
         rows = db.list_accounts(c, platforms=platforms, text=text,
-                                limit=limit, statuses=statuses)
+                                limit=limit, statuses=statuses,
+                                include_heavy=need_embeddings)
         accounts = [db.row_to_dict(r) for r in rows]
         id_to_emb = {}
-        if description:
+        if need_embeddings:
             for r in rows:
                 if r["bio_embedding"]:
                     id_to_emb[r["id"]] = db.unpack_embedding(r["bio_embedding"])
 
-    if description and id_to_emb:
+    if need_embeddings and id_to_emb:
         try:
             qvec = ai.embed_text(description)
         except Exception as e:

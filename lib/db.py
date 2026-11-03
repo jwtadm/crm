@@ -457,23 +457,41 @@ def update_embedding(c: sqlite3.Connection, account_id: int, embedding: list[flo
 
 # ---------- queries ----------
 
+# Columns excluded from default list queries to avoid loading ~19KB/row
+# of raw JSON + embedding blobs. Only loaded when explicitly needed (e.g. embedding rerank).
+_ACCOUNT_LIGHT_COLS = (
+    "id, person_id, platform, platform_user_id, secondary_id, username, full_name, "
+    "biography, follower_count, following_count, post_count, video_count, "
+    "is_verified, is_private, is_business, category, profile_pic_url, external_url, "
+    "bio_links, email, phone, city, address, country, embedding_text, source, "
+    "created_at, updated_at, is_rejected, rejection_reason, rejected_by, rejected_at"
+)
+
+
 def list_accounts(
     c: sqlite3.Connection,
     platforms: list[str] | None = None,
     text: str = "",
     limit: int = 200,
     statuses: list[str] | None = None,
+    include_heavy: bool = False,
 ) -> list[sqlite3.Row]:
     """List platform_accounts, optionally filtered by their owner-person's
     `people.status`. The status filter joins through people; `statuses=['已成交']`
     is the usual way to scope the similarity-seed picker to "已成交 客户名下
-    的真实账号"。"""
+    的真实账号"。
+
+    `include_heavy=False` (default) skips `raw` and `bio_embedding` columns,
+    reducing per-row payload from ~19KB to ~1KB.
+    """
+    cols = "pa.*" if (include_heavy and statuses) else \
+           "*" if include_heavy else \
+           f"pa.{_ACCOUNT_LIGHT_COLS}" if statuses else _ACCOUNT_LIGHT_COLS
     if statuses:
-        sql = ("SELECT pa.* FROM platform_accounts pa "
-               "JOIN people p ON p.id = pa.person_id")
+        sql = f"SELECT {cols} FROM platform_accounts pa JOIN people p ON p.id = pa.person_id"
         col = lambda name: f"pa.{name}"
     else:
-        sql = "SELECT * FROM platform_accounts"
+        sql = f"SELECT {cols} FROM platform_accounts"
         col = lambda name: name
     where = []
     args: list = []
