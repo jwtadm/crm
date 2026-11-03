@@ -79,6 +79,11 @@ CREATE INDEX IF NOT EXISTS idx_people_created_at ON people(created_at);
 CREATE INDEX IF NOT EXISTS idx_people_updated_at ON people(updated_at);
 CREATE INDEX IF NOT EXISTS idx_people_last_contacted ON people(last_contacted_at);  -- default sort column
 CREATE INDEX IF NOT EXISTS idx_pa_follower ON platform_accounts(follower_count);
+-- Composite sort index: eliminates 29k-row temp B-tree sort on /api/db/list.
+-- Matches ORDER BY follower_count DESC, updated_at DESC with platform IN (...) filter.
+CREATE INDEX IF NOT EXISTS idx_pa_list_sort ON platform_accounts(platform, follower_count DESC, updated_at DESC);
+-- Composite sort index for list_people default ORDER BY last_contacted_at DESC, updated_at DESC.
+CREATE INDEX IF NOT EXISTS idx_people_list_sort ON people(last_contacted_at DESC, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_email_log_person ON email_log(person_id);            -- stats JOIN
 CREATE INDEX IF NOT EXISTS idx_followup_actor ON followup_logs(actor_id, created_at);
 
@@ -267,6 +272,16 @@ def init_db() -> None:
     with _conn() as c:
         c.executescript(SCHEMA)
         _apply_migrations(c)
+        # Refresh optimizer statistics so newly created composite indexes are
+        # actually chosen. Without this, SQLite keeps using stale plans
+        # (e.g. idx_pa_username + temp B-tree instead of idx_pa_list_sort).
+        c.execute("ANALYZE")
+        # Non-blocking WAL checkpoint: keeps the -wal file from growing unbounded
+        # without waiting on concurrent readers (PASSIVE never blocks).
+        try:
+            c.execute("PRAGMA wal_checkpoint(PASSIVE)")
+        except sqlite3.OperationalError:
+            pass
 
 
 @contextmanager
@@ -508,7 +523,7 @@ def list_accounts(
         args.extend(statuses)
     if where:
         sql += " WHERE " + " AND ".join(where)
-    sql += (f" ORDER BY {col('follower_count')} DESC NULLS LAST, "
+    sql += (f" ORDER BY {col('follower_count')} DESC, "
             f"{col('updated_at')} DESC LIMIT ?")
     args.append(limit)
     return c.execute(sql, args).fetchall()
@@ -779,7 +794,7 @@ def list_people(
     total = c.execute(f"SELECT COUNT(*) FROM people p WHERE {where_sql}", args).fetchone()[0]
 
     order_sql = {
-        "last_contacted": "p.last_contacted_at DESC NULLS LAST, p.updated_at DESC",
+        "last_contacted": "p.last_contacted_at DESC, p.updated_at DESC",
         "updated":        "p.updated_at DESC",
         "created":        "p.created_at DESC",
         # 「创建时间·正序」—— 给"挨个人工核对"用的稳定排序：行不会因为你点了
@@ -787,8 +802,8 @@ def list_people(
         # created_at，因为后者可能撞秒。
         "created_asc":    "p.id ASC",
         "name":           "p.full_name COLLATE NOCASE ASC",
-        "followers":      "agg.max_followers DESC NULLS LAST, p.updated_at DESC",
-    }.get(order, "p.last_contacted_at DESC NULLS LAST, p.updated_at DESC")
+        "followers":      "agg.max_followers DESC, p.updated_at DESC",
+    }.get(order, "p.last_contacted_at DESC, p.updated_at DESC")
 
     # Two-phase query: first get the paginated people, then aggregate only for those IDs.
     # This avoids scanning the entire platform_accounts table on every page load.
