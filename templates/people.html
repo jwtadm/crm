@@ -1127,9 +1127,22 @@ function _createReminderBanner() {
   document.body.insertBefore(b, document.body.firstChild);
   return b;
 }
-// Boot the poll at script-load; refresh every 30s while the user is on the page.
+// Boot the poll at script-load; refresh every 30s but PAUSE when tab is hidden.
+let _reminderTimer = null;
+function _scheduleReminderPoll() {
+  if (_reminderTimer) clearTimeout(_reminderTimer);
+  _reminderTimer = setTimeout(() => {
+    if (document.visibilityState === 'visible') pollDueReminders();
+    _scheduleReminderPoll();
+  }, 30000);
+}
 pollDueReminders();
-setInterval(pollDueReminders, 30000);
+_scheduleReminderPoll();
+// Also pause polling immediately when tab becomes hidden
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && _reminderTimer) { clearTimeout(_reminderTimer); _reminderTimer = null; }
+  else if (!document.hidden && !_reminderTimer) { pollDueReminders(); _scheduleReminderPoll(); }
+});
 
 async function onDrawerFieldBlur(field, el) {
   const pid = _handlesDrawerPid;

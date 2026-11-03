@@ -57,6 +57,17 @@
 const PLATFORM_LABEL = {instagram: 'IG', tiktok: 'TikTok', x: 'X'};
 const ALL_PLATFORMS = ['instagram', 'tiktok', 'x'];
 window.CURRENT_USER = null;
+
+// ── Global request lifecycle: abort in-flight requests on page unload ──
+let _pageAC = new AbortController();
+const _origFetch = window.fetch;
+window.fetch = function(url, opts = {}) {
+  if (!opts.signal) opts.signal = _pageAC.signal;
+  return _origFetch.call(this, url, opts);
+};
+window.addEventListener('beforeunload', () => { _pageAC.abort(); });
+// Helper for polling code: create sub-controllers linked to page lifecycle
+function pageSignal() { return _pageAC.signal; }
 function applyRoleVisibility() {
   const isAdmin = window.CURRENT_USER && window.CURRENT_USER.role === 'admin';
   document.querySelectorAll('.admin-only').forEach(el => {
