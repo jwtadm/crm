@@ -12,7 +12,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 
-from flask import Flask, request, jsonify, send_file, render_template, redirect
+from flask import Flask, request, jsonify, send_file, render_template, redirect, g
 from flask_caching import Cache
 from flask_compress import Compress
 from openpyxl import Workbook
@@ -111,6 +111,33 @@ def _no_cache_html(response):
         response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
+    return response
+
+
+# ---------- slow request logging ----------
+# Anything over this threshold is printed to stdout (gunicorn error log /
+# journalctl) with its wall time. Without this, a slow handler is invisible:
+# gunicorn's access log records no duration, so "the page hung" reports have no
+# server-side evidence to point at.
+_SLOW_REQUEST_SECONDS = 1.0
+
+
+@app.before_request
+def _mark_request_start():
+    g._req_t0 = time.perf_counter()
+
+
+@app.after_request
+def _log_slow_request(response):
+    t0 = getattr(g, "_req_t0", None)
+    if t0 is not None:
+        elapsed = time.perf_counter() - t0
+        if elapsed >= _SLOW_REQUEST_SECONDS:
+            print(
+                f"[slow] {request.method} {request.full_path.rstrip('?')} "
+                f"{elapsed:.2f}s status={response.status_code}",
+                flush=True,
+            )
     return response
 
 
