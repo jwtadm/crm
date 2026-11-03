@@ -240,7 +240,7 @@ def _now() -> int:
     return int(time.time())
 
 
-def upsert_account(c: sqlite3.Connection, normalized: dict, source: str = "") -> tuple[int, int, bool]:
+def upsert_account(c: sqlite3.Connection, normalized: dict, source: str = "", prefer_person_id: int = None) -> tuple[int, int, bool]:
     """Insert-or-update one platform account. Returns (account_id, person_id, created).
 
     Dedup rules:
@@ -248,6 +248,15 @@ def upsert_account(c: sqlite3.Connection, normalized: dict, source: str = "") ->
          to that person if it currently belongs to a different one (merging stragglers).
       2. No email → use existing (platform, platform_user_id) row's person; create a
          fresh person if this account is new.
+
+    When *prefer_person_id* is set and the caller has already decided which person
+    this account should belong to (e.g. the user clicked "Add handle" on that
+    customer's drawer), we honour that choice:
+      - no-email + no existing account → attach to prefer_person_id instead of
+        creating a new empty person.
+      - email matches prefer_person_id → no change (already correct).
+      - email matches a DIFFERENT person → prefer_person_id is ignored, the
+        email-keyed person wins (so the UI can show a merge prompt).
     """
     now = _now()
     platform = normalized["platform"]
@@ -296,6 +305,10 @@ def upsert_account(c: sqlite3.Connection, normalized: dict, source: str = "") ->
     else:
         if existing:
             person_id = existing["person_id"]
+        elif prefer_person_id is not None:
+            # Caller already told us which person this account belongs to — use
+            # it instead of creating a brand-new empty person row.
+            person_id = prefer_person_id
         else:
             cur = c.execute(
                 "INSERT INTO people (email, full_name, status, created_at, updated_at) VALUES (NULL, ?, ?, ?, ?)",

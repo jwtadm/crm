@@ -24,3 +24,4 @@ config_local.py
 # rrweb regression suite scratch DB
 tests/.scout-test.db
 tests/.scout-test.db-*
+.mimosa/

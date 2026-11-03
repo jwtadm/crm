@@ -1576,7 +1576,9 @@ def api_db_import_handle():
 
     with db.tx() as c:
         source = "manual:add-to-person" if target_pid is not None else "manual"
-        acct_id, returned_pid, created = db.upsert_account(c, norm, source=source)
+        acct_id, returned_pid, created = db.upsert_account(
+            c, norm, source=source, prefer_person_id=target_pid
+        )
 
         if target_pid is not None and returned_pid != target_pid:
             other = db.get_person(c, returned_pid)

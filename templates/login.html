@@ -2,21 +2,87 @@
 {% set active = "" %}
 {% block title %}登录 — Scout{% endblock %}
 {% block content %}
-<div class="page-header"><h1><span>登录</span></h1></div>
-<div class="card" style="max-width: 420px; margin: 0 auto;">
-  <div class="input-row" style="flex-direction:column; align-items:stretch; gap:10px;">
-    <input type="text" id="username" placeholder="用户名" autocomplete="username">
-    <input type="password" id="password" placeholder="密码" autocomplete="current-password">
-    <label style="font-size:12px; color:var(--text2);">
-      <input type="checkbox" id="remember" style="accent-color: var(--accent); margin-right:6px;">记住我（30 天）
-    </label>
-    <button class="btn btn-accent" id="loginBtn">登录</button>
-    <div id="msg" style="font-size:12px; min-height:18px;"></div>
-    <div style="font-size:12px; color:var(--text2); text-align:center; margin-top:6px;">
-      还没账号？ <a href="/register" style="color:var(--accent);">注册</a> · 忘记密码请联系管理员
+<div class="login-wrap">
+  <div class="login-card">
+    <div class="login-brand">
+      <div class="login-logo"></div>
+      <h1>Scout</h1>
+      <p>IG Creator CRM</p>
+    </div>
+    <div class="login-body">
+      <input type="text" id="username" placeholder="用户名" autocomplete="username">
+      <input type="password" id="password" placeholder="密码" autocomplete="current-password">
+      <label class="login-remember">
+        <input type="checkbox" id="remember" style="accent-color: var(--accent); margin-right:6px;">记住我（30 天）
+      </label>
+      <button class="btn btn-accent login-btn" id="loginBtn">登录</button>
+      <div id="msg" class="login-msg"></div>
+      <div class="login-footer">
+        还没账号？ <a href="/register">注册</a> · 忘记密码请联系管理员
+      </div>
     </div>
   </div>
 </div>
+<style>
+.login-wrap {
+  min-height: calc(100vh - 56px - 40px);
+  display: flex; align-items: center; justify-content: center;
+  padding: 40px 20px;
+  background: linear-gradient(135deg, #f4f5f9 0%, #eef0f6 100%);
+  margin: -20px -20px 0;
+}
+.login-card {
+  width: 100%; max-width: 400px;
+  background: var(--surface);
+  border-radius: 16px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.04);
+  overflow: hidden;
+}
+.login-brand {
+  text-align: center;
+  padding: 32px 24px 24px;
+  background: linear-gradient(135deg, var(--accent) 0%, #9b8afb 100%);
+  color: #fff;
+}
+.login-logo {
+  width: 52px; height: 52px;
+  background: rgba(255,255,255,0.22);
+  border-radius: 14px;
+  margin: 0 auto 12px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+.login-brand h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.3px; margin: 0; }
+.login-brand p { font-size: 12px; opacity: 0.8; margin: 4px 0 0; }
+.login-body {
+  padding: 28px;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.login-body input[type="text"],
+.login-body input[type="password"] {
+  padding: 12px 14px; font-size: 14px;
+}
+.login-remember {
+  font-size: 12px; color: var(--text2);
+  display: flex; align-items: center;
+}
+.login-btn {
+  padding: 12px; font-size: 14px;
+  justify-content: center; margin-top: 2px;
+}
+.login-msg {
+  font-size: 12px; min-height: 18px;
+  text-align: center;
+}
+.login-footer {
+  font-size: 12px; color: var(--text2);
+  text-align: center;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.login-footer a { color: var(--accent); text-decoration: none; font-weight: 500; }
+.login-footer a:hover { text-decoration: underline; }
+</style>
 {% endblock %}
 {% block scripts %}
 <script>
