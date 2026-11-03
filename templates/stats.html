@@ -1,0 +1,573 @@
+{% extends "_base.html" %}
+{% block title %}统计面板 — CRM{% endblock %}
+{% block content %}
+
+<style>
+/* ─── Stats Dashboard ──────────────────────────────────────── */
+.stats-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 24px; flex-wrap: wrap; gap: 12px;
+}
+.stats-header h1 { font-size: 1.5rem; font-weight: 700; }
+.stats-header .welcome { color: var(--accent); }
+.stats-header .date-display { color: var(--text-2); font-size: .9rem; margin-left: 8px; font-weight: 400; }
+
+.range-btns { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.range-btns .btn { font-size: .82rem; padding: 5px 14px; }
+.range-btns .btn.active { background: var(--accent); color: #fff; }
+.range-btns input[type="date"] {
+  font-family: var(--font); font-size: .82rem; padding: 5px 10px;
+  border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--surface);
+}
+
+/* KPI Cards */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
+  gap: 14px;
+  margin-bottom: 28px;
+}
+.kpi {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r-lg); padding: 18px 16px;
+  text-align: center; transition: box-shadow .15s;
+}
+.kpi:hover { box-shadow: var(--shadow-md); }
+.kpi-value { font-size: 1.8rem; font-weight: 800; line-height: 1.1; }
+.kpi-label { font-size: .78rem; color: var(--text-2); margin-top: 4px; }
+.kpi-sub { font-size: .72rem; color: var(--text-3); margin-top: 2px; }
+.kpi.green .kpi-value { color: var(--green); }
+.kpi.blue .kpi-value { color: var(--blue); }
+.kpi.orange .kpi-value { color: var(--orange); }
+.kpi.red .kpi-value { color: var(--red); }
+.kpi.purple .kpi-value { color: var(--purple); }
+.kpi.accent .kpi-value { color: var(--accent); }
+
+/* Section Cards */
+.stats-section {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r-lg); padding: 20px 24px; margin-bottom: 20px;
+}
+.stats-section h2 {
+  font-size: 1rem; font-weight: 700; margin-bottom: 14px;
+  display: flex; align-items: center; gap: 8px;
+}
+.stats-section h2 .badge {
+  font-size: .72rem; font-weight: 600; background: var(--accent-light);
+  color: var(--accent); padding: 2px 8px; border-radius: var(--r-full);
+}
+
+/* Pipeline */
+.pipeline-row {
+  display: flex; align-items: center; gap: 0; margin: 8px 0;
+  flex-wrap: wrap;
+}
+.pipeline-stage {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 18px;
+  background: var(--surface-2); border-radius: var(--r);
+  min-width: 120px; flex: 1;
+}
+.pipeline-arrow {
+  color: var(--text-3); font-size: 1.2rem; padding: 0 4px;
+  flex-shrink: 0;
+}
+.pipeline-count { font-size: 1.3rem; font-weight: 800; }
+.pipeline-label { font-size: .78rem; color: var(--text-2); }
+.pipeline-pct { font-size: .72rem; color: var(--text-3); }
+
+/* Tables */
+.stats-table {
+  width: 100%; border-collapse: collapse; font-size: .85rem;
+}
+.stats-table th {
+  text-align: left; padding: 8px 10px; font-weight: 600;
+  color: var(--text-2); border-bottom: 2px solid var(--border);
+  font-size: .78rem; text-transform: uppercase; letter-spacing: .03em;
+  white-space: nowrap;
+}
+.stats-table td {
+  padding: 9px 10px; border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.stats-table tr:hover td { background: var(--surface-2); }
+.stats-table tr.total-row td { font-weight: 700; border-top: 2px solid var(--border); background: var(--surface-2); }
+.stats-table tr.unassigned-row td { color: var(--text-3); font-style: italic; }
+.stats-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.stats-table .highlight { color: var(--accent); font-weight: 700; }
+
+/* Distribution bars */
+.dist-item {
+  display: flex; align-items: center; gap: 10px; margin: 6px 0;
+}
+.dist-label { min-width: 90px; font-size: .82rem; color: var(--text); flex-shrink: 0; text-align: right; }
+.dist-bar-wrap { flex: 1; height: 22px; background: var(--surface-2); border-radius: var(--r-sm); overflow: hidden; position: relative; }
+.dist-bar {
+  height: 100%; border-radius: var(--r-sm); transition: width .4s ease;
+  display: flex; align-items: center; padding-left: 8px;
+  font-size: .72rem; font-weight: 600; color: #fff; min-width: fit-content;
+}
+.dist-count { font-size: .82rem; color: var(--text-2); min-width: 50px; text-align: right; flex-shrink: 0; }
+
+/* Trend chart (CSS bars) */
+.trend-chart {
+  display: flex; align-items: flex-end; gap: 6px; height: 160px; padding-top: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.trend-col {
+  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px;
+}
+.trend-bars { display: flex; gap: 2px; align-items: flex-end; width: 100%; justify-content: center; }
+.trend-bar {
+  width: 10px; border-radius: 3px 3px 0 0; transition: height .3s ease; min-height: 2px;
+}
+.trend-label { font-size: .7rem; color: var(--text-3); margin-top: 4px; }
+.trend-value { font-size: .65rem; color: var(--text-3); text-align: center; }
+
+/* Legend */
+.legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 10px; justify-content: center; }
+.legend-item { display: flex; align-items: center; gap: 5px; font-size: .75rem; color: var(--text-2); }
+.legend-dot { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+
+/* 2-col layout for smaller sections */
+.stats-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+@media (max-width: 900px) { .stats-2col { grid-template-columns: 1fr; } }
+
+/* Tag chips */
+.tag-cloud { display: flex; flex-wrap: wrap; gap: 8px; }
+.tag-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: var(--r-full); padding: 4px 12px;
+  font-size: .8rem; color: var(--text);
+}
+.tag-chip .tag-count { font-weight: 700; color: var(--accent); }
+
+/* Loading / Empty states */
+.stats-loading { text-align: center; padding: 60px 20px; color: var(--text-3); }
+.stats-empty { color: var(--text-3); font-size: .85rem; padding: 16px 0; text-align: center; }
+
+/* User selector (admin only) */
+.user-selector { display: flex; align-items: center; gap: 8px; }
+.user-selector select {
+  font-family: var(--font); font-size: .85rem; padding: 5px 12px;
+  border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--surface);
+}
+</style>
+
+<!-- ─── Header ────────────────────────────────────────────── -->
+<div class="stats-header">
+  <h1>
+    <span class="welcome" id="welcomeText">欢迎您</span>
+    <span class="date-display" id="dateDisplay"></span>
+  </h1>
+  <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+    <div class="user-selector admin-only hidden" id="userSelector">
+      <label style="font-size:.82rem;color:var(--text-2)">员工:</label>
+      <select id="userFilter" onchange="loadStats()">
+        <option value="all">全部</option>
+      </select>
+    </div>
+    <div class="range-btns">
+      <button class="btn btn-ghost active" data-range="today">今天</button>
+      <button class="btn btn-ghost" data-range="yesterday">昨天</button>
+      <button class="btn btn-ghost" data-range="week">本周</button>
+      <button class="btn btn-ghost" data-range="month">本月</button>
+      <input type="date" id="startDate" onchange="onCustomDate()">
+      <span style="color:var(--text-3)">至</span>
+      <input type="date" id="endDate" onchange="onCustomDate()">
+    </div>
+  </div>
+</div>
+
+<!-- ─── KPI Cards ─────────────────────────────────────────── -->
+<div class="kpi-grid" id="kpiGrid">
+  <div class="kpi blue"><div class="kpi-value" id="kpiNew">-</div><div class="kpi-label">新增客户</div></div>
+  <div class="kpi accent"><div class="kpi-value" id="kpiContacted">-</div><div class="kpi-label">联系人数</div></div>
+  <div class="kpi"><div class="kpi-value" id="kpiEmails">-</div><div class="kpi-label">发送邮件</div><div class="kpi-sub" id="kpiEmailOk"></div></div>
+  <div class="kpi"><div class="kpi-value" id="kpiFollowups">-</div><div class="kpi-label">跟进记录</div></div>
+  <div class="kpi green"><div class="kpi-value" id="kpiReplies">-</div><div class="kpi-label">收到回复</div></div>
+  <div class="kpi green"><div class="kpi-value" id="kpiDeals">-</div><div class="kpi-label">成交客户</div></div>
+  <div class="kpi red"><div class="kpi-value" id="kpiRejected">-</div><div class="kpi-label">标记不合适</div></div>
+  <div class="kpi purple"><div class="kpi-value" id="kpiTotal">-</div><div class="kpi-label">客户总数</div><div class="kpi-sub" id="kpiVerified"></div></div>
+</div>
+
+<!-- ─── Pipeline ──────────────────────────────────────────── -->
+<div class="stats-section">
+  <h2>🔄 客户管道 <span class="badge" id="pipelinePct"></span></h2>
+  <div id="pipelineContainer"></div>
+</div>
+
+<!-- ─── Trend Chart ───────────────────────────────────────── -->
+<div class="stats-section">
+  <h2>📈 趋势图 <span class="badge">近7天</span></h2>
+  <div class="trend-chart" id="trendChart"></div>
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:var(--blue)"></div>新增</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--accent)"></div>联系</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--orange)"></div>发信</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div>回复</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--green);opacity:.5"></div>成交</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--red)"></div>不合适</div>
+  </div>
+</div>
+
+<!-- ─── Per-User Table ────────────────────────────────────── -->
+<div class="stats-section admin-only hidden" id="perUserSection">
+  <h2>👥 员工明细</h2>
+  <div style="overflow-x:auto">
+    <table class="stats-table" id="userTable">
+      <thead>
+        <tr>
+          <th>员工</th><th class="num">负责客户</th><th class="num">新增</th>
+          <th class="num">联系</th><th class="num">发信</th><th class="num">跟进</th>
+          <th class="num">→已联系</th><th class="num">→已回复</th><th class="num">→已成交</th>
+          <th class="num">→不适合</th>
+        </tr>
+      </thead>
+      <tbody id="userTableBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ─── Two-Column Distributions ──────────────────────────── -->
+<div class="stats-2col">
+  <!-- Platform -->
+  <div class="stats-section">
+    <h2>📱 平台分布</h2>
+    <div id="platformDist"></div>
+  </div>
+  <!-- Intent -->
+  <div class="stats-section">
+    <h2>🎯 合作强度</h2>
+    <div id="intentDist"></div>
+  </div>
+</div>
+
+<div class="stats-2col">
+  <!-- Tags -->
+  <div class="stats-section">
+    <h2>🏷️ 热门标签 <span class="badge">Top 15</span></h2>
+    <div id="tagCloud" class="tag-cloud"></div>
+  </div>
+  <!-- Rejection Reasons -->
+  <div class="stats-section">
+    <h2>⛔ 拒绝分析 <span class="badge" id="rejectionBadge"></span></h2>
+    <div id="rejectionDist"></div>
+  </div>
+</div>
+
+<!-- ─── Loading ───────────────────────────────────────────── -->
+<div class="stats-loading" id="statsLoading">加载中...</div>
+
+<script>
+const STATUS_COLORS = {
+  '待联系': 'var(--text-3)', '已联系': 'var(--blue)', '已回复': 'var(--orange)',
+  '已成交': 'var(--green)', '不适合': 'var(--red)', '已放弃': 'var(--text-3)',
+  '主动来找': 'var(--purple)', '未设置': 'var(--text-3)'
+};
+const STATUS_ORDER = ['待联系', '已联系', '已回复', '已成交', '主动来找', '不适合', '已放弃'];
+const PLATFORM_LABELS = {instagram:'IG', tiktok:'TikTok', x:'X'};
+const PLATFORM_COLORS = {instagram:'#E1306C', tiktok:'#000', x:'#1DA1F2'};
+const DIST_COLORS = ['var(--accent)','var(--blue)','var(--green)','var(--orange)','var(--purple)','var(--pink)','var(--red)'];
+
+let currentRange = 'today';
+let customStart = null, customEnd = null;
+let allUsers = [];
+
+// ─── Init ──────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', async () => {
+  await initUser();
+  setWelcome();
+  setupRangeButtons();
+  setDefaultDates();
+  await loadUserList();
+  await loadStats();
+  await loadTrends();
+});
+
+async function initUser() {
+  try {
+    const r = await fetch('/api/auth/me');
+    const d = await r.json();
+    window.CURRENT_USER = d.user;
+  } catch(e) {}
+}
+
+function setWelcome() {
+  const u = window.CURRENT_USER;
+  const name = u ? (u.display_name || u.username) : '';
+  document.getElementById('welcomeText').textContent = `欢迎您，${name}`;
+  // Show/hide admin-only elements
+  if (u && u.role === 'admin') {
+    document.querySelectorAll('.admin-only').forEach(el => el.classList.remove('hidden'));
+  }
+}
+
+function setupRangeButtons() {
+  document.querySelectorAll('.range-btns .btn[data-range]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.range-btns .btn[data-range]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentRange = btn.dataset.range;
+      customStart = customEnd = null;
+      document.getElementById('startDate').value = '';
+      document.getElementById('endDate').value = '';
+      loadStats();
+      loadTrends();
+    });
+  });
+}
+
+function setDefaultDates() {
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('startDate').max = today;
+  document.getElementById('endDate').max = today;
+}
+
+function onCustomDate() {
+  const s = document.getElementById('startDate').value;
+  const e = document.getElementById('endDate').value;
+  if (s && e) {
+    document.querySelectorAll('.range-btns .btn[data-range]').forEach(b => b.classList.remove('active'));
+    customStart = Math.floor(new Date(s).getTime() / 1000);
+    customEnd = Math.floor(new Date(e).getTime() / 1000) + 86400;
+    loadStats();
+  }
+}
+
+async function loadUserList() {
+  if (!window.CURRENT_USER || window.CURRENT_USER.role !== 'admin') return;
+  try {
+    const r = await fetch('/api/admin/users');
+    const d = await r.json();
+    allUsers = (d.users || []).filter(u => u.is_active);
+    const sel = document.getElementById('userFilter');
+    allUsers.forEach(u => {
+      const opt = document.createElement('option');
+      opt.value = u.id;
+      opt.textContent = u.display_name || u.username;
+      sel.appendChild(opt);
+    });
+  } catch(e) {}
+}
+
+// ─── Load Stats ────────────────────────────────────────────
+async function loadStats() {
+  document.getElementById('statsLoading').style.display = 'block';
+  try {
+    let url = '/api/stats?';
+    if (customStart && customEnd) {
+      url += `start=${customStart}&end=${customEnd}`;
+    } else {
+      url += `range=${currentRange}`;
+    }
+    const uid = document.getElementById('userFilter')?.value;
+    if (uid && uid !== 'all') url += `&user_id=${uid}`;
+
+    const r = await fetch(url);
+    const data = await r.json();
+
+    document.getElementById('statsLoading').style.display = 'none';
+    renderDateDisplay(data.range);
+    renderKPIs(data);
+    renderPipeline(data.pipeline, data.total_people);
+    renderUserTable(data.per_user);
+    renderDist('platformDist', data.platform, d => PLATFORM_LABELS[d.platform] || d.platform, PLATFORM_COLORS);
+    renderDist('intentDist', data.intent, d => d.intent);
+    renderTags(data.tags);
+    renderRejections(data);
+  } catch(e) {
+    document.getElementById('statsLoading').textContent = '加载失败: ' + e.message;
+  }
+}
+
+async function loadTrends() {
+  try {
+    let url = '/api/stats/trends?days=7';
+    const uid = document.getElementById('userFilter')?.value;
+    if (uid && uid !== 'all') url += `&user_id=${uid}`;
+    const r = await fetch(url);
+    const data = await r.json();
+    renderTrendChart(data.trends);
+  } catch(e) {}
+}
+
+// ─── Renderers ─────────────────────────────────────────────
+function renderDateDisplay(range) {
+  const s = new Date(range.start * 1000);
+  const e = new Date((range.end - 1) * 1000);
+  const fmt = d => `${d.getMonth()+1}月${d.getDate()}日`;
+  const labels = {today:'今天', yesterday:'昨天', week:'本周', month:'本月'};
+  const label = labels[range.preset] || '自定义';
+  let text = label;
+  if (range.preset !== 'today') text += ` (${fmt(s)} - ${fmt(e)})`;
+  document.getElementById('dateDisplay').textContent = text;
+}
+
+function renderKPIs(data) {
+  const s = data.summary;
+  document.getElementById('kpiNew').textContent = s.new_customers;
+  document.getElementById('kpiContacted').textContent = s.contacted;
+  document.getElementById('kpiEmails').textContent = s.emails_sent;
+  document.getElementById('kpiEmailOk').textContent = `成功 ${s.emails_ok}`;
+  document.getElementById('kpiFollowups').textContent = s.followups;
+  document.getElementById('kpiReplies').textContent = s.replies;
+  document.getElementById('kpiDeals').textContent = s.deals;
+  document.getElementById('kpiRejected').textContent = s.rejected_today;
+  document.getElementById('kpiTotal').textContent = data.total_people;
+  document.getElementById('kpiVerified').textContent =
+    `认证 ${data.verified_count} · 商业 ${data.business_count}`;
+}
+
+function renderPipeline(pipeline, total) {
+  const container = document.getElementById('pipelineContainer');
+  // Sort by standard order
+  const ordered = STATUS_ORDER.map(s => pipeline.find(p => p.status === s) || {status:s, count:0});
+  // Add any extras
+  pipeline.forEach(p => { if (!STATUS_ORDER.includes(p.status)) ordered.push(p); });
+
+  const maxCount = Math.max(...ordered.map(p => p.count), 1);
+  let html = '<div class="pipeline-row">';
+  ordered.forEach((p, i) => {
+    const pct = total > 0 ? ((p.count / total) * 100).toFixed(1) : 0;
+    const color = STATUS_COLORS[p.status] || 'var(--text-3)';
+    html += `
+      <div class="pipeline-stage">
+        <div>
+          <div class="pipeline-count" style="color:${color}">${p.count}</div>
+          <div class="pipeline-label">${p.status}</div>
+          <div class="pipeline-pct">${pct}%</div>
+        </div>
+      </div>`;
+    if (i < ordered.length - 1) html += '<div class="pipeline-arrow">→</div>';
+  });
+  html += '</div>';
+
+  // Conversion rates
+  const contactedN = (ordered.find(p=>p.status==='已联系')||{count:0}).count;
+  const repliedN = (ordered.find(p=>p.status==='已回复')||{count:0}).count;
+  const dealsN = (ordered.find(p=>p.status==='已成交')||{count:0}).count;
+  const totalForConv = total || 1;
+  document.getElementById('pipelinePct').textContent =
+    `联系率 ${(contactedN/totalForConv*100).toFixed(1)}% · 回复率 ${(repliedN/totalForConv*100).toFixed(1)}% · 成交率 ${(dealsN/totalForConv*100).toFixed(1)}%`;
+
+  container.innerHTML = html;
+}
+
+function renderUserTable(perUser) {
+  if (!perUser || !perUser.length) return;
+  const tbody = document.getElementById('userTableBody');
+  let html = '';
+  const totals = {total:0,new:0,contacted:0,emails:0,followups:0,sl:0,sr:0,sd:0,sr2:0};
+  perUser.forEach(u => {
+    const sc = u.status_changes || {};
+    const isUnassigned = (u.user_id === null || u.user_id === undefined);
+    totals.total += u.total_customers; totals.new += u.new_customers;
+    totals.contacted += u.contacted; totals.emails += u.emails_sent;
+    totals.followups += u.followups; totals.sl += sc['已联系']||0;
+    totals.sr += sc['已回复']||0; totals.sd += sc['已成交']||0; totals.sr2 += sc['不适合']||0;
+    const rowClass = isUnassigned ? 'unassigned-row' : '';
+    html += `<tr class="${rowClass}">
+      <td>${escapeHtml(u.display_name)}${isUnassigned ? '' : ''}</td>
+      <td class="num">${u.total_customers}</td>
+      <td class="num highlight">${u.new_customers}</td>
+      <td class="num">${u.contacted}</td>
+      <td class="num">${u.emails_sent}</td>
+      <td class="num">${u.followups}</td>
+      <td class="num">${sc['已联系']||0}</td>
+      <td class="num">${sc['已回复']||0}</td>
+      <td class="num" style="color:var(--green);font-weight:700">${sc['已成交']||0}</td>
+      <td class="num" style="color:var(--red)">${sc['不适合']||0}</td>
+    </tr>`;
+  });
+  // Total row
+  if (perUser.length > 1) {
+    html += `<tr class="total-row">
+      <td>合计</td><td class="num">${totals.total}</td>
+      <td class="num">${totals.new}</td><td class="num">${totals.contacted}</td>
+      <td class="num">${totals.emails}</td><td class="num">${totals.followups}</td>
+      <td class="num">${totals.sl}</td><td class="num">${totals.sr}</td>
+      <td class="num">${totals.sd}</td><td class="num">${totals.sr2}</td>
+    </tr>`;
+  }
+  tbody.innerHTML = html;
+}
+
+function renderDist(containerId, data, labelFn, colorMap) {
+  const container = document.getElementById(containerId);
+  if (!data || !data.length) { container.innerHTML = '<div class="stats-empty">暂无数据</div>'; return; }
+  const maxVal = Math.max(...data.map(d => d.count), 1);
+  let html = '';
+  data.forEach((d, i) => {
+    const pct = (d.count / maxVal * 100).toFixed(1);
+    const color = colorMap ? (colorMap[d.platform] || colorMap[d.status] || DIST_COLORS[i % DIST_COLORS.length]) : DIST_COLORS[i % DIST_COLORS.length];
+    html += `<div class="dist-item">
+      <div class="dist-label">${escapeHtml(labelFn(d))}</div>
+      <div class="dist-bar-wrap">
+        <div class="dist-bar" style="width:${Math.max(pct, 2)}%;background:${color}">${d.count > 0 ? d.count : ''}</div>
+      </div>
+      <div class="dist-count">${d.count}</div>
+    </div>`;
+  });
+  container.innerHTML = html;
+}
+
+function renderTags(tags) {
+  const container = document.getElementById('tagCloud');
+  if (!tags || !tags.length) { container.innerHTML = '<div class="stats-empty">暂无标签</div>'; return; }
+  container.innerHTML = tags.map(t =>
+    `<div class="tag-chip">${escapeHtml(t.tag)} <span class="tag-count">${t.count}</span></div>`
+  ).join('');
+}
+
+function renderRejections(data) {
+  document.getElementById('rejectionBadge').textContent = `总计 ${data.rejection_total}`;
+  const container = document.getElementById('rejectionDist');
+  const reasons = data.rejection_reasons || [];
+  if (!reasons.length) { container.innerHTML = '<div class="stats-empty">暂无拒绝原因</div>'; return; }
+  const maxVal = Math.max(...reasons.map(r => r.count), 1);
+  let html = '';
+  reasons.forEach((r, i) => {
+    const pct = (r.count / maxVal * 100).toFixed(1);
+    html += `<div class="dist-item">
+      <div class="dist-label" title="${escapeHtml(r.reason)}">${escapeHtml(truncate(r.reason, 18))}</div>
+      <div class="dist-bar-wrap">
+        <div class="dist-bar" style="width:${Math.max(pct, 3)}%;background:var(--red)">${r.count}</div>
+      </div>
+      <div class="dist-count">${r.count}</div>
+    </div>`;
+  });
+  container.innerHTML = html;
+}
+
+function renderTrendChart(trends) {
+  const container = document.getElementById('trendChart');
+  if (!trends || !trends.length) { container.innerHTML = '<div class="stats-empty">暂无趋势数据</div>'; return; }
+
+  const maxVal = Math.max(...trends.flatMap(t => [t.new_customers, t.contacted, t.emails_sent, t.replies, t.deals, t.rejected]), 1);
+  const barH = v => Math.max((v / maxVal) * 130, 2);
+
+  let html = '';
+  trends.forEach(t => {
+    html += `<div class="trend-col">
+      <div class="trend-value">${t.new_customers || ''}</div>
+      <div class="trend-bars">
+        <div class="trend-bar" style="height:${barH(t.new_customers)}px;background:var(--blue)" title="新增 ${t.new_customers}"></div>
+        <div class="trend-bar" style="height:${barH(t.contacted)}px;background:var(--accent)" title="联系 ${t.contacted}"></div>
+        <div class="trend-bar" style="height:${barH(t.emails_sent)}px;background:var(--orange)" title="发信 ${t.emails_sent}"></div>
+        <div class="trend-bar" style="height:${barH(t.replies)}px;background:var(--green)" title="回复 ${t.replies}"></div>
+        <div class="trend-bar" style="height:${barH(t.deals)}px;background:var(--green);opacity:.5" title="成交 ${t.deals}"></div>
+        <div class="trend-bar" style="height:${barH(t.rejected)}px;background:var(--red)" title="不合适 ${t.rejected}"></div>
+      </div>
+      <div class="trend-label">${t.date}</div>
+    </div>`;
+  });
+  container.innerHTML = html;
+}
+
+// ─── Helpers ───────────────────────────────────────────────
+function escapeHtml(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+function truncate(s, n) { return s && s.length > n ? s.slice(0, n) + '…' : s; }
+</script>
+{% endblock %}

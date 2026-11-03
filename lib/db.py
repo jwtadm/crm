@@ -169,6 +169,20 @@ CREATE TABLE IF NOT EXISTS reminders (
 );
 CREATE INDEX IF NOT EXISTS idx_rem_due ON reminders(remind_at, dismissed_at);
 CREATE INDEX IF NOT EXISTS idx_rem_actor ON reminders(actor_id, dismissed_at);
+
+-- Status change events for statistics / daily report.
+-- Every time a person's status changes, a row is inserted here so we can
+-- answer "how many became 已回复 today?" accurately.
+CREATE TABLE IF NOT EXISTS status_events (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    person_id   INTEGER NOT NULL REFERENCES people(id) ON DELETE CASCADE,
+    actor_id    INTEGER REFERENCES users(id),
+    old_status  TEXT,
+    new_status  TEXT NOT NULL,
+    created_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_status_events_actor ON status_events(actor_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_status_events_status ON status_events(new_status, created_at);
 """
 
 
@@ -204,6 +218,24 @@ def _apply_migrations(c: sqlite3.Connection) -> None:
         c.execute("ALTER TABLE platform_accounts ADD COLUMN rejected_by INTEGER REFERENCES users(id)")
     if "rejected_at" not in accounts:
         c.execute("ALTER TABLE platform_accounts ADD COLUMN rejected_at INTEGER")
+
+    # status_events table — create if missing (for existing databases)
+    existing_tables = {r[0] for r in c.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'"
+    ).fetchall()}
+    if "status_events" not in existing_tables:
+        c.execute("""
+            CREATE TABLE status_events (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                person_id   INTEGER NOT NULL REFERENCES people(id) ON DELETE CASCADE,
+                actor_id    INTEGER REFERENCES users(id),
+                old_status  TEXT,
+                new_status  TEXT NOT NULL,
+                created_at  INTEGER NOT NULL
+            )
+        """)
+        c.execute("CREATE INDEX idx_status_events_actor ON status_events(actor_id, created_at)")
+        c.execute("CREATE INDEX idx_status_events_status ON status_events(new_status, created_at)")
 
 
 # ---------- connection ----------
@@ -762,8 +794,10 @@ def record_contact(c: sqlite3.Connection, person_id: int,
     is in {'已回复', '已成交', '不适合', '已放弃'}, we keep it; otherwise we
     accept the requested set_status.
 
-    Pass set_status=None to only stamp the timestamp (no status change)."""
+    Pass set_status=None to only stamp the timestamp (no status change).
+    Returns dict with person data plus '_old_status' for status event tracking."""
     now = _now()
+    cur_status = None
     if set_status:
         cur = c.execute("SELECT status FROM people WHERE id=?", (person_id,)).fetchone()
         cur_status = cur["status"] if cur else None
@@ -773,6 +807,7 @@ def record_contact(c: sqlite3.Connection, person_id: int,
                 "UPDATE people SET last_contacted_at=?, updated_at=? WHERE id=?",
                 (now, now, person_id),
             )
+            cur_status = None  # no actual status change
         else:
             c.execute(
                 "UPDATE people SET last_contacted_at=?, status=?, updated_at=? WHERE id=?",
@@ -784,7 +819,9 @@ def record_contact(c: sqlite3.Connection, person_id: int,
             (now, now, person_id),
         )
     row = c.execute("SELECT * FROM people WHERE id=?", (person_id,)).fetchone()
-    return dict(row) if row else {}
+    result = dict(row) if row else {}
+    result["_old_status"] = cur_status  # only set when status actually changed
+    return result
 
 
 def list_owners(c: sqlite3.Connection) -> list[dict]:
@@ -844,3 +881,390 @@ def row_to_dict(row: sqlite3.Row) -> dict:
         except Exception:
             d["raw"] = {}
     return d
+
+
+# ---------- status change events ----------
+
+def record_status_event(c: sqlite3.Connection, person_id: int, actor_id: int | None,
+                        old_status: str | None, new_status: str) -> None:
+    """Record a status change for statistics tracking."""
+    now = _now()
+    c.execute(
+        "INSERT INTO status_events (person_id, actor_id, old_status, new_status, created_at) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (person_id, actor_id, old_status, new_status, now),
+    )
+
+
+# ---------- statistics queries ----------
+
+def _day_bounds(ts: int) -> tuple[int, int]:
+    """Return (start_of_day, end_of_day) as unix timestamps for the given timestamp."""
+    import datetime
+    dt = datetime.datetime.fromtimestamp(ts)
+    start = dt.replace(hour=0, minute=0, second=0, microsecond=0)
+    end = start + datetime.timedelta(days=1)
+    return int(start.timestamp()), int(end.timestamp())
+
+
+def get_daily_overview(c: sqlite3.Connection, start_ts: int, end_ts: int,
+                       user_id: int | None = None) -> dict:
+    """Get comprehensive stats for a date range.
+
+    Returns summary KPIs, per-user breakdown, pipeline distribution,
+    platform distribution, country distribution, intent distribution,
+    email stats, and rejection stats.
+    """
+    user_filter = ""
+    user_param = []
+    if user_id:
+        user_filter = "AND assigned_user_id = ?"
+        user_param = [user_id]
+
+    # Summary KPIs
+    new_customers = c.execute(
+        f"SELECT COUNT(*) AS n FROM people WHERE created_at >= ? AND created_at < ? {user_filter}",
+        [start_ts, end_ts] + user_param,
+    ).fetchone()["n"]
+
+    contacted = c.execute(
+        f"""SELECT COUNT(*) AS n FROM people
+            WHERE last_contacted_at >= ? AND last_contacted_at < ? {user_filter}""",
+        [start_ts, end_ts] + user_param,
+    ).fetchone()["n"]
+
+    emails_sent = c.execute(
+        f"""SELECT COUNT(*) AS n, SUM(CASE WHEN ok=1 THEN 1 ELSE 0 END) AS ok_count
+           FROM email_log el
+           JOIN people p ON p.id = el.person_id
+           WHERE el.sent_at >= ? AND el.sent_at < ? {user_filter}""",
+        [start_ts, end_ts] + user_param,
+    ).fetchone()
+    emails_sent_count = emails_sent["n"] or 0
+    emails_ok_count = emails_sent["ok_count"] or 0
+
+    followup_count = c.execute(
+        f"""SELECT COUNT(*) AS n FROM followup_logs f
+            JOIN people p ON p.id = f.person_id
+            WHERE f.created_at >= ? AND f.created_at < ? {user_filter}""",
+        [start_ts, end_ts] + user_param,
+    ).fetchone()["n"]
+
+    # Status changes from status_events
+    status_changes = {}
+    for status in ["已联系", "已回复", "已成交", "不适合"]:
+        row = c.execute(
+            f"""SELECT COUNT(*) AS n FROM status_events se
+                JOIN people p ON p.id = se.person_id
+                WHERE se.new_status = ? AND se.created_at >= ? AND se.created_at < ?
+                {user_filter}""",
+            [status, start_ts, end_ts] + user_param,
+        ).fetchone()
+        status_changes[status] = row["n"] if row else 0
+
+    # Per-user breakdown
+    per_user = []
+    users = c.execute(
+        "SELECT id, username, display_name FROM users WHERE is_active = 1 ORDER BY display_name"
+    ).fetchall()
+    for u in users:
+        uid = u["id"]
+        u_new = c.execute(
+            "SELECT COUNT(*) AS n FROM people WHERE assigned_user_id=? AND created_at >= ? AND created_at < ?",
+            (uid, start_ts, end_ts),
+        ).fetchone()["n"]
+        u_contacted = c.execute(
+            """SELECT COUNT(*) AS n FROM people
+               WHERE assigned_user_id=? AND last_contacted_at >= ? AND last_contacted_at < ?""",
+            (uid, start_ts, end_ts),
+        ).fetchone()["n"]
+        u_emails = c.execute(
+            """SELECT COUNT(*) AS n FROM email_log
+               WHERE person_id IN (SELECT id FROM people WHERE assigned_user_id=?)
+               AND sent_at >= ? AND sent_at < ?""",
+            (uid, start_ts, end_ts),
+        ).fetchone()["n"]
+        u_followups = c.execute(
+            """SELECT COUNT(*) AS n FROM followup_logs
+               WHERE actor_id=? AND created_at >= ? AND created_at < ?""",
+            (uid, start_ts, end_ts),
+        ).fetchone()["n"]
+        u_status_changes = {}
+        for status in ["已联系", "已回复", "已成交", "不适合"]:
+            row = c.execute(
+                """SELECT COUNT(*) AS n FROM status_events
+                   WHERE actor_id=? AND new_status=? AND created_at >= ? AND created_at < ?""",
+                (uid, status, start_ts, end_ts),
+            ).fetchone()
+            u_status_changes[status] = row["n"] if row else 0
+        # Total customers assigned
+        u_total = c.execute(
+            "SELECT COUNT(*) AS n FROM people WHERE assigned_user_id=?",
+            (uid,),
+        ).fetchone()["n"]
+        per_user.append({
+            "user_id": uid,
+            "username": u["username"],
+            "display_name": u["display_name"] or u["username"],
+            "total_customers": u_total,
+            "new_customers": u_new,
+            "contacted": u_contacted,
+            "emails_sent": u_emails,
+            "followups": u_followups,
+            "status_changes": u_status_changes,
+        })
+
+    # Unassigned customers (assigned_user_id IS NULL) — shown as a synthetic
+    # row so the per-user table total matches the pipeline total. Only makes
+    # sense when NOT filtering to a specific user.
+    if user_id is None:
+        unassigned = c.execute(
+            "SELECT COUNT(*) AS n FROM people WHERE assigned_user_id IS NULL"
+        ).fetchone()["n"]
+        if unassigned > 0:
+            ua_new = c.execute(
+                "SELECT COUNT(*) AS n FROM people WHERE assigned_user_id IS NULL AND created_at >= ? AND created_at < ?",
+                (start_ts, end_ts),
+            ).fetchone()["n"]
+            ua_contacted = c.execute(
+                """SELECT COUNT(*) AS n FROM people
+                   WHERE assigned_user_id IS NULL AND last_contacted_at >= ? AND last_contacted_at < ?""",
+                (start_ts, end_ts),
+            ).fetchone()["n"]
+            ua_emails = c.execute(
+                """SELECT COUNT(*) AS n FROM email_log el
+                   JOIN people p ON p.id = el.person_id
+                   WHERE p.assigned_user_id IS NULL AND el.sent_at >= ? AND el.sent_at < ?""",
+                (start_ts, end_ts),
+            ).fetchone()["n"]
+            ua_followups = c.execute(
+                """SELECT COUNT(*) AS n FROM followup_logs f
+                   JOIN people p ON p.id = f.person_id
+                   WHERE p.assigned_user_id IS NULL AND f.created_at >= ? AND f.created_at < ?""",
+                (start_ts, end_ts),
+            ).fetchone()["n"]
+            ua_status_changes = {}
+            for status in ["已联系", "已回复", "已成交", "不适合"]:
+                row = c.execute(
+                    """SELECT COUNT(*) AS n FROM status_events se
+                       JOIN people p ON p.id = se.person_id
+                       WHERE p.assigned_user_id IS NULL AND se.new_status=?
+                       AND se.created_at >= ? AND se.created_at < ?""",
+                    (status, start_ts, end_ts),
+                ).fetchone()
+                ua_status_changes[status] = row["n"] if row else 0
+            per_user.append({
+                "user_id": None,
+                "username": "",
+                "display_name": "未分配",
+                "total_customers": unassigned,
+                "new_customers": ua_new,
+                "contacted": ua_contacted,
+                "emails_sent": ua_emails,
+                "followups": ua_followups,
+                "status_changes": ua_status_changes,
+            })
+
+    # Pipeline distribution (all customers, not just today)
+    pipeline = []
+    pipeline_rows = c.execute(
+        f"SELECT status, COUNT(*) AS n FROM people WHERE 1=1 {user_filter} GROUP BY status ORDER BY n DESC",
+        user_param,
+    ).fetchall()
+    for r in pipeline_rows:
+        pipeline.append({"status": r["status"] or "未设置", "count": r["n"]})
+
+    # Platform distribution
+    platform_dist = []
+    plat_rows = c.execute(
+        f"""SELECT pa.platform, COUNT(DISTINCT pa.person_id) AS n
+            FROM platform_accounts pa
+            JOIN people p ON p.id = pa.person_id
+            WHERE 1=1 {user_filter}
+            GROUP BY pa.platform""",
+        user_param,
+    ).fetchall()
+    for r in plat_rows:
+        platform_dist.append({"platform": r["platform"], "count": r["n"]})
+
+    # Country distribution (top 15)
+    country_dist = []
+    country_rows = c.execute(
+        f"""SELECT pa.country, COUNT(DISTINCT pa.person_id) AS n
+            FROM platform_accounts pa
+            JOIN people p ON p.id = pa.person_id
+            WHERE pa.country IS NOT NULL AND pa.country != '' {user_filter}
+            GROUP BY pa.country ORDER BY n DESC LIMIT 15""",
+        user_param,
+    ).fetchall()
+    for r in country_rows:
+        country_dist.append({"country": r["country"], "count": r["n"]})
+
+    # Intent distribution
+    intent_dist = []
+    intent_rows = c.execute(
+        f"""SELECT COALESCE(intent, '未评估') AS intent_label, COUNT(*) AS n
+            FROM people WHERE 1=1 {user_filter}
+            GROUP BY intent_label ORDER BY n DESC""",
+        user_param,
+    ).fetchall()
+    for r in intent_rows:
+        intent_dist.append({"intent": r["intent_label"], "count": r["n"]})
+
+    # Rejection stats
+    rejection_today = c.execute(
+        f"""SELECT COUNT(*) AS n FROM platform_accounts pa
+            JOIN people p ON p.id = pa.person_id
+            WHERE pa.is_rejected = 1 AND pa.rejected_at >= ? AND pa.rejected_at < ?
+            {user_filter}""",
+        [start_ts, end_ts] + user_param,
+    ).fetchone()["n"]
+
+    rejection_total = c.execute(
+        f"""SELECT COUNT(*) AS n FROM people
+            WHERE status = '不适合' {user_filter}""",
+        user_param,
+    ).fetchone()["n"]
+
+    # Rejection reasons
+    rejection_reasons = []
+    reason_rows = c.execute(
+        """SELECT rejection_reason, COUNT(*) AS n FROM platform_accounts
+           WHERE is_rejected = 1 AND rejection_reason IS NOT NULL AND rejection_reason != ''
+           GROUP BY rejection_reason ORDER BY n DESC LIMIT 10"""
+    ).fetchall()
+    for r in reason_rows:
+        rejection_reasons.append({"reason": r["rejection_reason"], "count": r["n"]})
+
+    # Tags distribution (top 15)
+    tag_dist = []
+    all_tags = c.execute(
+        f"SELECT tags FROM people WHERE tags IS NOT NULL AND tags != '[]' {user_filter}",
+        user_param,
+    ).fetchall()
+    tag_counts = {}
+    for row in all_tags:
+        try:
+            tags_list = json.loads(row["tags"])
+            for tag in tags_list:
+                tag_counts[tag] = tag_counts.get(tag, 0) + 1
+        except Exception:
+            pass
+    tag_dist = [{"tag": k, "count": v} for k, v in sorted(tag_counts.items(), key=lambda x: -x[1])[:15]]
+
+    # Verified / business account ratios
+    verified_count = c.execute(
+        f"""SELECT COUNT(DISTINCT pa.person_id) AS n FROM platform_accounts pa
+            JOIN people p ON p.id = pa.person_id
+            WHERE pa.is_verified = 1 {user_filter}""",
+        user_param,
+    ).fetchone()["n"]
+    business_count = c.execute(
+        f"""SELECT COUNT(DISTINCT pa.person_id) AS n FROM platform_accounts pa
+            JOIN people p ON p.id = pa.person_id
+            WHERE pa.is_business = 1 {user_filter}""",
+        user_param,
+    ).fetchone()["n"]
+    total_people = c.execute(
+        f"SELECT COUNT(*) AS n FROM people WHERE 1=1 {user_filter}",
+        user_param,
+    ).fetchone()["n"]
+
+    return {
+        "summary": {
+            "new_customers": new_customers,
+            "contacted": contacted,
+            "emails_sent": emails_sent_count,
+            "emails_ok": emails_ok_count,
+            "followups": followup_count,
+            "replies": status_changes.get("已回复", 0),
+            "deals": status_changes.get("已成交", 0),
+            "rejected_today": rejection_today,
+        },
+        "per_user": per_user,
+        "pipeline": pipeline,
+        "platform": platform_dist,
+        "country": country_dist,
+        "intent": intent_dist,
+        "rejection_total": rejection_total,
+        "rejection_reasons": rejection_reasons,
+        "tags": tag_dist,
+        "verified_count": verified_count,
+        "business_count": business_count,
+        "total_people": total_people,
+    }
+
+
+def get_trends(c: sqlite3.Connection, days: int = 7,
+               user_id: int | None = None) -> list[dict]:
+    """Get daily trend data for the last N days."""
+    import datetime
+    now = datetime.datetime.now()
+    result = []
+    for i in range(days - 1, -1, -1):
+        dt = now - datetime.timedelta(days=i)
+        day_start = dt.replace(hour=0, minute=0, second=0, microsecond=0)
+        day_end = day_start + datetime.timedelta(days=1)
+        start_ts = int(day_start.timestamp())
+        end_ts = int(day_end.timestamp())
+
+        user_filter = ""
+        user_param = []
+        if user_id:
+            user_filter = "AND assigned_user_id = ?"
+            user_param = [user_id]
+
+        new_c = c.execute(
+            f"SELECT COUNT(*) AS n FROM people WHERE created_at >= ? AND created_at < ? {user_filter}",
+            [start_ts, end_ts] + user_param,
+        ).fetchone()["n"]
+        contacted_c = c.execute(
+            f"""SELECT COUNT(*) AS n FROM people
+                WHERE last_contacted_at >= ? AND last_contacted_at < ? {user_filter}""",
+            [start_ts, end_ts] + user_param,
+        ).fetchone()["n"]
+        emails_c = c.execute(
+            f"""SELECT COUNT(*) AS n FROM email_log el
+                JOIN people p ON p.id = el.person_id
+                WHERE el.sent_at >= ? AND el.sent_at < ? {user_filter}""",
+            [start_ts, end_ts] + user_param,
+        ).fetchone()["n"]
+        followups_c = c.execute(
+            f"""SELECT COUNT(*) AS n FROM followup_logs f
+                JOIN people p ON p.id = f.person_id
+                WHERE f.created_at >= ? AND f.created_at < ? {user_filter}""",
+            [start_ts, end_ts] + user_param,
+        ).fetchone()["n"]
+        replies_c = c.execute(
+            f"""SELECT COUNT(*) AS n FROM status_events se
+                JOIN people p ON p.id = se.person_id
+                WHERE se.new_status='已回复' AND se.created_at >= ? AND se.created_at < ?
+                {user_filter}""",
+            [start_ts, end_ts] + user_param,
+        ).fetchone()["n"]
+        deals_c = c.execute(
+            f"""SELECT COUNT(*) AS n FROM status_events se
+                JOIN people p ON p.id = se.person_id
+                WHERE se.new_status='已成交' AND se.created_at >= ? AND se.created_at < ?
+                {user_filter}""",
+            [start_ts, end_ts] + user_param,
+        ).fetchone()["n"]
+        rejected_c = c.execute(
+            f"""SELECT COUNT(*) AS n FROM platform_accounts pa
+                JOIN people p ON p.id = pa.person_id
+                WHERE pa.is_rejected=1 AND pa.rejected_at >= ? AND pa.rejected_at < ?
+                {user_filter}""",
+            [start_ts, end_ts] + user_param,
+        ).fetchone()["n"]
+
+        result.append({
+            "date": day_start.strftime("%m-%d"),
+            "new_customers": new_c,
+            "contacted": contacted_c,
+            "emails_sent": emails_c,
+            "followups": followups_c,
+            "replies": replies_c,
+            "deals": deals_c,
+            "rejected": rejected_c,
+        })
+    return result

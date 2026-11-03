@@ -118,7 +118,24 @@ def fetch_tikhub_balance() -> float | None:
 
 # ---------- Job persistence ----------
 
-def save_job(job: dict, created_by: int) -> None:
+# In-memory set of job IDs that have been cancelled. Worker checks this for
+# instant cancellation without hitting the DB. Survives within the same process;
+# across restarts, the boot sweep flips 'running' → 'interrupted' so the stale
+# worker thread is dead anyway.
+_CANCELLED_JOBS: set[str] = set()
+
+
+def mark_cancelled(job_id: str) -> None:
+    """Signal the worker thread to stop ASAP (in-memory, instant)."""
+    _CANCELLED_JOBS.add(job_id)
+
+
+def is_cancelled(job_id: str) -> bool:
+    """Check in-memory cancel signal."""
+    return job_id in _CANCELLED_JOBS
+
+
+def save_job(job: dict, created_by: int, *, update_status: bool = True) -> None:
     """Mirror to DB. payload_json is the source of truth across restarts;
     callers (app.py) keep an in-memory dict to avoid hitting SQLite on every
     progress tick, but we still checkpoint after each seed.
@@ -126,21 +143,48 @@ def save_job(job: dict, created_by: int) -> None:
     Stamps `last_checkpoint_at` so the watchdog can spot zombie jobs whose
     worker thread died (e.g. gunicorn worker SIGKILL'd by slow-client
     timeout) — without this, the row sits in status='running' forever and
-    the UI never offers a Resume button."""
+    the UI never offers a Resume button.
+
+    When update_status=False (periodic checkpoint from the worker loop),
+    the status column is NOT touched — this prevents the worker from
+    overwriting a 'cancelled' status set by the cancel endpoint. The
+    payload_json still carries the in-memory status for load/resume, but
+    the DB status column is the authoritative control flag.
+    """
     job["last_checkpoint_at"] = time.time()
     with db.tx() as c:
-        c.execute(
-            """INSERT INTO similarity_jobs (id, created_by, created_at, finished_at, status, payload_json)
-               VALUES (?,?,?,?,?,?)
-               ON CONFLICT(id) DO UPDATE SET
-                 finished_at=excluded.finished_at,
-                 status=excluded.status,
-                 payload_json=excluded.payload_json""",
-            (job["id"], created_by,
-             int(job.get("started_at") or time.time()),
-             int(job["finished_at"]) if job.get("finished_at") else None,
-             job["status"], _json.dumps(job, ensure_ascii=False)),
-        )
+        if update_status:
+            c.execute(
+                """INSERT INTO similarity_jobs (id, created_by, created_at, finished_at, status, payload_json)
+                   VALUES (?,?,?,?,?,?)
+                   ON CONFLICT(id) DO UPDATE SET
+                     finished_at=excluded.finished_at,
+                     status=excluded.status,
+                     payload_json=excluded.payload_json""",
+                (job["id"], created_by,
+                 int(job.get("started_at") or time.time()),
+                 int(job["finished_at"]) if job.get("finished_at") else None,
+                 job["status"], _json.dumps(job, ensure_ascii=False)),
+            )
+        else:
+            # Periodic checkpoint: update payload + finished_at only.
+            # Never overwrite the status column (cancel endpoint owns it).
+            c.execute(
+                """UPDATE similarity_jobs
+                   SET payload_json=?, finished_at=?, last_checkpoint_at=?
+                   WHERE id=?""",
+                (_json.dumps(job, ensure_ascii=False),
+                 int(job["finished_at"]) if job.get("finished_at") else None,
+                 job["last_checkpoint_at"],
+                 job["id"]),
+            )
+        # If the DB status is 'cancelled' (set by the cancel endpoint),
+        # sync it back into the in-memory dict so subsequent payloads
+        # carry the correct status.
+        row = c.execute("SELECT status FROM similarity_jobs WHERE id=?",
+                        (job["id"],)).fetchone()
+        if row and row["status"] == "cancelled":
+            job["status"] = "cancelled"
 
 
 def load_job(job_id: str) -> tuple[dict | None, int | None]:
@@ -347,11 +391,17 @@ def run_job(job: dict, created_by: int) -> None:
 
     try:
         for i in range(start_idx, len(seed_ids)):
-            # Check cancellation each iteration
+            # Check cancellation each iteration — in-memory first (instant),
+            # then DB (survives restarts / cross-process).
+            if is_cancelled(job["id"]):
+                job["status"] = "cancelled"
+                save_job(job, created_by)
+                return
             with db.tx() as c:
                 current = c.execute("SELECT status FROM similarity_jobs WHERE id=?", (job["id"],)).fetchone()
             if current and current["status"] == "cancelled":
                 job["status"] = "cancelled"
+                save_job(job, created_by)
                 return
 
             aid = seed_ids[i]
@@ -398,7 +448,7 @@ def run_job(job: dict, created_by: int) -> None:
                 return
 
             job["cursor"] = i + 1
-            save_job(job, created_by)
+            save_job(job, created_by, update_status=False)
 
         job["status"] = "done"
         job["finished_at"] = time.time()

@@ -78,8 +78,7 @@ def _no_cache_html(response):
 @app.route("/")
 @auth.login_required
 def index():
-    u = auth.current_user()
-    return redirect("/similarity" if u["role"] == "admin" else "/people")
+    return redirect("/stats")
 
 
 @app.route("/similarity")
@@ -124,6 +123,12 @@ def page_settings():
 @auth.login_required
 def page_people():
     return render_template("people.html")
+
+
+@app.route("/stats")
+@auth.login_required
+def page_stats():
+    return render_template("stats.html")
 
 
 @app.route("/admin/users")
@@ -370,6 +375,8 @@ def api_people_create():
             db.attach_placeholder_handle(c, pid, plat, uname)
 
         person = dict(c.execute("SELECT * FROM people WHERE id=?", (pid,)).fetchone())
+        # Record initial status event for statistics
+        db.record_status_event(c, pid, u["id"], None, status)
 
     audit.log(u["id"], "person.create", f"person:{pid}",
               {"email": email, "by_role": u["role"]})
@@ -685,6 +692,10 @@ def api_people_contact(person_id: int):
                         "detail": "use /api/people/<id>/reject"}), 400
     with db.tx() as c:
         person = db.record_contact(c, person_id, set_status=set_status)
+        if person.get("_old_status") and set_status:
+            db.record_status_event(c, person_id, auth.current_user()["id"],
+                                   person["_old_status"], set_status)
+        person.pop("_old_status", None)
     return jsonify({"person": person})
 
 
@@ -860,6 +871,7 @@ def api_people_reject(person_id: int):
         p = db.get_person(c, person_id)
         if not p:
             return jsonify({"error": "forbidden"}), 403
+        old_status = p["status"]
         prev = p["status"] if p["status"] != "不适合" else (p["previous_status"] or "待联系")
         c.execute(
             "UPDATE people SET previous_status=?, status='不适合', updated_at=? WHERE id=?",
@@ -870,6 +882,9 @@ def api_people_reject(person_id: int):
                 WHERE person_id=?""",
             (reason, u["id"], now, now, person_id),
         )
+        # Record status change event
+        if old_status != "不适合":
+            db.record_status_event(c, person_id, u["id"], old_status, "不适合")
     audit.log(u["id"], "person.reject", f"person:{person_id}", {"reason": reason})
     return jsonify({"ok": True})
 
@@ -896,6 +911,8 @@ def api_people_unreject(person_id: int):
                 WHERE person_id=?""",
             (now, person_id),
         )
+        # Record status change event (from 不适合 back to previous status)
+        db.record_status_event(c, person_id, u["id"], "不适合", restore_status)
     audit.log(u["id"], "person.unreject", f"person:{person_id}")
     return jsonify({"ok": True})
 
@@ -1165,7 +1182,10 @@ def _run_email_job(job: dict, person_ids: list[int], subject_t: str, body_t: str
                 job["sent"] += 1
                 job["log"].append({"person_id": pid, "email": r["email"], "ok": True})
                 with db.tx() as c:
-                    db.record_contact(c, pid, set_status="已联系")
+                    result = db.record_contact(c, pid, set_status="已联系")
+                    if result.get("_old_status"):
+                        db.record_status_event(c, pid, created_by,
+                                               result["_old_status"], "已联系")
             except Exception as e:
                 job["failed"] += 1
                 job["log"].append({"person_id": pid, "email": r.get("email"), "ok": False, "error": str(e)[:300]})
@@ -1405,6 +1425,97 @@ def api_db_stats():
     return jsonify(_stats())
 
 
+# ============================================================
+# Statistics / Dashboard API
+# ============================================================
+
+@app.route("/api/stats")
+@auth.login_required
+def api_stats():
+    """Comprehensive stats for the dashboard.
+
+    Query params:
+      range: today | yesterday | week | month (default: today)
+      start, end: custom unix timestamps (override range)
+      user_id: filter to specific user (admin only; staff always sees own)
+    """
+    import datetime
+    u = auth.current_user()
+    args = request.args
+
+    # Parse date range
+    range_preset = (args.get("range") or "today").strip()
+    now = datetime.datetime.now()
+
+    if "start" in args and "end" in args:
+        start_ts = int(args["start"])
+        end_ts = int(args["end"])
+    else:
+        if range_preset == "today":
+            day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            start_ts = int(day_start.timestamp())
+            end_ts = start_ts + 86400
+        elif range_preset == "yesterday":
+            yesterday = now - datetime.timedelta(days=1)
+            day_start = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)
+            start_ts = int(day_start.timestamp())
+            end_ts = start_ts + 86400
+        elif range_preset == "week":
+            day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            start_ts = int(day_start.timestamp()) - 6 * 86400
+            end_ts = int(day_start.timestamp()) + 86400
+        elif range_preset == "month":
+            day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            start_ts = int(day_start.timestamp()) - 29 * 86400
+            end_ts = int(day_start.timestamp()) + 86400
+        else:
+            day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            start_ts = int(day_start.timestamp())
+            end_ts = start_ts + 86400
+
+    # Determine user filter
+    target_user_id = None
+    if u["role"] != "admin":
+        target_user_id = u["id"]  # staff always sees own data only
+    else:
+        raw_uid = (args.get("user_id") or "").strip()
+        if raw_uid and raw_uid != "all":
+            target_user_id = int(raw_uid)
+
+    with db.tx() as c:
+        data = db.get_daily_overview(c, start_ts, end_ts, user_id=target_user_id)
+
+    data["range"] = {"start": start_ts, "end": end_ts, "preset": range_preset}
+    return jsonify(data)
+
+
+@app.route("/api/stats/trends")
+@auth.login_required
+def api_stats_trends():
+    """Daily trend data for charts.
+
+    Query params:
+      days: number of days to look back (default 7, max 90)
+      user_id: filter to specific user (admin only)
+    """
+    u = auth.current_user()
+    args = request.args
+    days = min(int(args.get("days") or 7), 90)
+
+    target_user_id = None
+    if u["role"] != "admin":
+        target_user_id = u["id"]
+    else:
+        raw_uid = (args.get("user_id") or "").strip()
+        if raw_uid and raw_uid != "all":
+            target_user_id = int(raw_uid)
+
+    with db.tx() as c:
+        trends = db.get_trends(c, days, user_id=target_user_id)
+
+    return jsonify({"trends": trends, "days": days})
+
+
 @app.route("/api/platforms")
 @auth.login_required
 def api_platforms():
@@ -1511,6 +1622,11 @@ def api_db_update_person(person_id: int):
             return jsonify({"error": "forbidden_field", "field": "status",
                             "detail": "use /api/people/<id>/reject"}), 400
     with db.tx() as c:
+        # Read old status before update for status event tracking
+        old_status = None
+        if "status" in payload:
+            old_row = c.execute("SELECT status FROM people WHERE id=?", (person_id,)).fetchone()
+            old_status = old_row["status"] if old_row else None
         try:
             db.update_person_fields(c, person_id, **payload)
         except ValueError as e:
@@ -1525,6 +1641,9 @@ def api_db_update_person(person_id: int):
                 "error": "email_conflict",
                 "detail": "该邮箱已属于另一个人。如要合并请先删除另一边或换个邮箱。",
             }), 409
+        # Record status change event if status was updated
+        if "status" in payload and old_status and old_status != payload["status"]:
+            db.record_status_event(c, person_id, u["id"], old_status, payload["status"])
         person = db.get_person(c, person_id)
     if u["role"] == "admin" and "assigned_user_id" in payload:
         audit.log(u["id"], "person.assign", f"person:{person_id}",
@@ -2015,6 +2134,8 @@ def api_similarity_bulk_cancel(job_id: str):
     if job.get("status") not in ("interrupted", "running"):
         return jsonify({"error": "not_cancellable",
                         "detail": f"only running/interrupted jobs can be cancelled (this one is {job.get('status')})"}), 400
+    # Signal the in-memory worker thread FIRST — instant, no DB race.
+    bulk_similarity.mark_cancelled(job_id)
     with db.tx() as c:
         cur = c.execute(
             "UPDATE similarity_jobs SET status='cancelled' WHERE id=? AND status IN ('running','interrupted')",
@@ -2181,6 +2302,8 @@ def api_hydrate_bulk_cancel(job_id: str):
     if job.get("status") not in ("interrupted", "running"):
         return jsonify({"error": "not_cancellable",
                         "detail": f"only running/interrupted jobs can be cancelled (this one is {job.get('status')})"}), 400
+    # Signal the in-memory worker thread FIRST — instant, no DB race.
+    bulk_hydrate.mark_cancelled(job_id)
     with db.tx() as c:
         cur = c.execute(
             "UPDATE hydrate_jobs SET status='cancelled' WHERE id=? AND status IN ('running','interrupted')",

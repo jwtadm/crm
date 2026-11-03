@@ -1,6 +1,6 @@
 {% extends "_base.html" %}
 {% set active = "people" %}
-{% block title %}客户管理 · Scout{% endblock %}
+{% block title %}客户管理 · CRM{% endblock %}
 {% block content %}
 <div class="page-header">
   <h1><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-5px;margin-right:8px;color:var(--accent)"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>客户 <span>管理</span></h1>
@@ -461,7 +461,7 @@ function renderTable(people) {
           <th style="min-width:130px;">标签</th>
           ${ownerHeader}
           <th style="min-width:90px;">最近联系</th>
-          <th style="min-width:90px;" title="入库时间（抓取/导入到 Scout 的时刻）。要找昨天的新客户，把上方「排序」切到「创建时间（新→旧）」。">入库时间</th>
+          <th style="min-width:90px;" title="入库时间（抓取/导入到 CRM 的时刻）。要找昨天的新客户，把上方「排序」切到「创建时间（新→旧）」。">入库时间</th>
           <th style="min-width:200px;">备注</th>
           <th class="action-col" style="min-width:140px;">操作</th>
         </tr>

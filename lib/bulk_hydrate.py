@@ -111,24 +111,54 @@ def fetch_tikhub_balance() -> float | None:
 
 # ---------- Job persistence ----------
 
-def save_job(job: dict, created_by: int) -> None:
+# In-memory set of cancelled job IDs — instant cancel signal for the worker
+# thread (same process). DB is the durable backup; this set is the fast path.
+_CANCELLED_JOBS: set[str] = set()
+
+
+def mark_cancelled(job_id: str) -> None:
+    _CANCELLED_JOBS.add(job_id)
+
+
+def is_cancelled(job_id: str) -> bool:
+    return job_id in _CANCELLED_JOBS
+
+
+def save_job(job: dict, created_by: int, *, update_status: bool = True) -> None:
     # Watchdog uses last_checkpoint_at to detect zombie jobs (worker died
     # silently — e.g. gunicorn sync worker SIGKILL'd by slow-client timeout
     # — leaving status='running' but no thread advancing the cursor).
     job["last_checkpoint_at"] = time.time()
     with db.tx() as c:
-        c.execute(
-            """INSERT INTO hydrate_jobs (id, created_by, created_at, finished_at, status, payload_json)
-               VALUES (?,?,?,?,?,?)
-               ON CONFLICT(id) DO UPDATE SET
-                 finished_at=excluded.finished_at,
-                 status=excluded.status,
-                 payload_json=excluded.payload_json""",
-            (job["id"], created_by,
-             int(job.get("started_at") or time.time()),
-             int(job["finished_at"]) if job.get("finished_at") else None,
-             job["status"], _json.dumps(job, ensure_ascii=False)),
-        )
+        if update_status:
+            c.execute(
+                """INSERT INTO hydrate_jobs (id, created_by, created_at, finished_at, status, payload_json)
+                   VALUES (?,?,?,?,?,?)
+                   ON CONFLICT(id) DO UPDATE SET
+                     finished_at=excluded.finished_at,
+                     status=excluded.status,
+                     payload_json=excluded.payload_json""",
+                (job["id"], created_by,
+                 int(job.get("started_at") or time.time()),
+                 int(job["finished_at"]) if job.get("finished_at") else None,
+                 job["status"], _json.dumps(job, ensure_ascii=False)),
+            )
+        else:
+            # Periodic checkpoint: don't overwrite status column
+            c.execute(
+                """UPDATE hydrate_jobs
+                   SET payload_json=?, finished_at=?, last_checkpoint_at=?
+                   WHERE id=?""",
+                (_json.dumps(job, ensure_ascii=False),
+                 int(job["finished_at"]) if job.get("finished_at") else None,
+                 job["last_checkpoint_at"],
+                 job["id"]),
+            )
+        # Sync back cancelled status from DB if set externally
+        row = c.execute("SELECT status FROM hydrate_jobs WHERE id=?",
+                        (job["id"],)).fetchone()
+        if row and row["status"] == "cancelled":
+            job["status"] = "cancelled"
 
 
 def load_job(job_id: str) -> tuple[dict | None, int | None]:
@@ -304,11 +334,16 @@ def run_job(job: dict, created_by: int) -> None:
         # the job was already complete (cursor == total) on resume.
         with ThreadPoolExecutor(max_workers=HYDRATE_WORKERS) as ex:
             for batch_start in range(start_idx, len(account_ids), HYDRATE_WORKERS):
-                # Check cancellation each batch
+                # Check cancellation each batch — in-memory first (instant)
+                if is_cancelled(job["id"]):
+                    job["status"] = "cancelled"
+                    save_job(job, created_by)
+                    return
                 with db.tx() as c:
                     current = c.execute("SELECT status FROM hydrate_jobs WHERE id=?", (job["id"],)).fetchone()
                 if current and current["status"] == "cancelled":
                     job["status"] = "cancelled"
+                    save_job(job, created_by)
                     return
 
                 batch_end = min(batch_start + HYDRATE_WORKERS, len(account_ids))
@@ -325,7 +360,7 @@ def run_job(job: dict, created_by: int) -> None:
                 if len(job["per_item"]) > 200:
                     job["per_item"] = job["per_item"][-200:]
                 job["cursor"] = batch_end
-                save_job(job, created_by)
+                save_job(job, created_by, update_status=False)
 
         job["status"] = "done"
         job["finished_at"] = time.time()
