@@ -347,6 +347,13 @@ def run_job(job: dict, created_by: int) -> None:
 
     try:
         for i in range(start_idx, len(seed_ids)):
+            # Check cancellation each iteration
+            with db.tx() as c:
+                current = c.execute("SELECT status FROM similarity_jobs WHERE id=?", (job["id"],)).fetchone()
+            if current and current["status"] == "cancelled":
+                job["status"] = "cancelled"
+                return
+
             aid = seed_ids[i]
             seed = seeds_by_id.get(aid)
             t0 = time.time()

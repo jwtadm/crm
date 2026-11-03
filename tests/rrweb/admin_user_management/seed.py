@@ -4,6 +4,7 @@ activate → reset password → role toggle → deactivate → delete.
 Done via auth.create_user so the user starts in a known state independent of
 the UI registration flow (which has its own test).
 """
+import os
 import sys
 sys.path.insert(0, "/root/ig_scraper")
 
@@ -27,7 +28,7 @@ def seed() -> None:
         username=FIXTURE_STAFF_USERNAME,
         email="rrwebfx_managed_staff@example.local",
         display_name="RRWebFx Managed Staff",
-        password="rrwebfx-temp-pw-1",
+        password=os.environ.get("SCOUT_RRWEB_MANAGED_PW", "rrwebfx-temp-pw-1"),
         role="staff",
         is_active=0,           # starts inactive so we can hit the 激活 button
         must_change_pw=0,

@@ -304,6 +304,13 @@ def run_job(job: dict, created_by: int) -> None:
         # the job was already complete (cursor == total) on resume.
         with ThreadPoolExecutor(max_workers=HYDRATE_WORKERS) as ex:
             for batch_start in range(start_idx, len(account_ids), HYDRATE_WORKERS):
+                # Check cancellation each batch
+                with db.tx() as c:
+                    current = c.execute("SELECT status FROM hydrate_jobs WHERE id=?", (job["id"],)).fetchone()
+                if current and current["status"] == "cancelled":
+                    job["status"] = "cancelled"
+                    return
+
                 batch_end = min(batch_start + HYDRATE_WORKERS, len(account_ids))
                 items = [(i, account_ids[i], by_id.get(account_ids[i]))
                          for i in range(batch_start, batch_end)]

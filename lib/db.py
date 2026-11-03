@@ -173,24 +173,37 @@ CREATE INDEX IF NOT EXISTS idx_rem_actor ON reminders(actor_id, dismissed_at);
 
 
 # Idempotent ALTERs for columns added after the initial schema. SQLite has no
-# IF NOT EXISTS for ADD COLUMN, so we probe pragma first.
-_MIGRATIONS = [
-    ("people", "assigned_user_id", "INTEGER REFERENCES users(id)"),
-    ("people", "previous_status",  "TEXT"),
-    ("people", "intent",            "TEXT"),  # 合作强度高/中/低/无意愿; NULL = 未评估
-    ("users",  "reply_to_email",    "TEXT"),  # per-staff "客户回信应该回到这" 邮箱
-    ("platform_accounts", "is_rejected",      "INTEGER DEFAULT 0"),
-    ("platform_accounts", "rejection_reason", "TEXT"),
-    ("platform_accounts", "rejected_by",      "INTEGER REFERENCES users(id)"),
-    ("platform_accounts", "rejected_at",      "INTEGER"),
-]
+# IF NOT EXISTS for ADD COLUMN, so we probe the table's columns first. Every
+# ALTER is a literal statement below — SQLite cannot bind identifiers in DDL,
+# so we hardcode them and only pass *values* via parameters elsewhere.
+
+
+def _columns_of(c: sqlite3.Connection, table: str) -> set[str]:
+    return {r["name"] for r in c.execute("SELECT name FROM pragma_table_info(?)", (table,))}
 
 
 def _apply_migrations(c: sqlite3.Connection) -> None:
-    for table, col, decl in _MIGRATIONS:
-        cols = {r["name"] for r in c.execute(f"PRAGMA table_info({table})")}
-        if col not in cols:
-            c.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
+    people = _columns_of(c, "people")
+    if "assigned_user_id" not in people:
+        c.execute("ALTER TABLE people ADD COLUMN assigned_user_id INTEGER REFERENCES users(id)")
+    if "previous_status" not in people:
+        c.execute("ALTER TABLE people ADD COLUMN previous_status TEXT")
+    if "intent" not in people:  # 合作强度高/中/低/无意愿; NULL = 未评估
+        c.execute("ALTER TABLE people ADD COLUMN intent TEXT")
+
+    users = _columns_of(c, "users")
+    if "reply_to_email" not in users:  # per-staff "客户回信应该回到这" 邮箱
+        c.execute("ALTER TABLE users ADD COLUMN reply_to_email TEXT")
+
+    accounts = _columns_of(c, "platform_accounts")
+    if "is_rejected" not in accounts:
+        c.execute("ALTER TABLE platform_accounts ADD COLUMN is_rejected INTEGER DEFAULT 0")
+    if "rejection_reason" not in accounts:
+        c.execute("ALTER TABLE platform_accounts ADD COLUMN rejection_reason TEXT")
+    if "rejected_by" not in accounts:
+        c.execute("ALTER TABLE platform_accounts ADD COLUMN rejected_by INTEGER REFERENCES users(id)")
+    if "rejected_at" not in accounts:
+        c.execute("ALTER TABLE platform_accounts ADD COLUMN rejected_at INTEGER")
 
 
 # ---------- connection ----------

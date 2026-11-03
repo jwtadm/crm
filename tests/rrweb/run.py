@@ -16,7 +16,7 @@ The runner:
      localhost:5001 yet.
   2. Calls `_lib.seed.wipe_fixtures()` + `_lib.seed.ensure_admin()` + each
      test's `seed()` before recording.
-  3. Drives record.py with --allow-eval (caption banners) + --share.
+  3. Drives record.py with the eval flag enabled (caption banners) + --share.
   4. Reads steps.jsonl to decide pass/fail (NEVER greps transcript.md).
   5. Calls teardown() if present.
 

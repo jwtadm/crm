@@ -19,6 +19,7 @@ We also pre-seed SMTP_* settings so the send_batch route's env check passes.
 
 Usage: .venv/bin/python tools/dev_with_ig_stub.py
 """
+import os
 import sys
 sys.path.insert(0, "/root/ig_scraper")
 
@@ -35,11 +36,11 @@ settings.init()  # ensure the settings table exists on a fresh test DB
 settings.set_many({
     "SMTP_HOST": "stub.smtp.local",
     "SMTP_PORT": "587",
-    "SMTP_USERNAME": "stub-user",
-    "SMTP_PASSWORD": "stub-pass",
+    "SMTP_USERNAME": os.environ.get("SCOUT_STUB_SMTP_USER", "stub-user"),
+    "SMTP_PASSWORD": os.environ.get("SCOUT_STUB_SMTP_PASS", "stub-pass"),
     "SMTP_FROM_EMAIL": "noreply@stub.local",
     "SMTP_FROM_NAME": "Scout (stub)",
-    "OPENROUTER_API_KEY": "stub-or-key",
+    "OPENROUTER_API_KEY": os.environ.get("SCOUT_STUB_OR_KEY", "stub-or-key"),
 })
 
 

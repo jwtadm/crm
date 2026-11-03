@@ -3,15 +3,15 @@
 {% block title %}相似发现 · Scout{% endblock %}
 {% block content %}
 <div class="page-header">
-  <h1>相似 <span>发现</span></h1>
+  <h1><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-5px;margin-right:8px;color:var(--accent)"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>相似 <span>发现</span></h1>
   <p>从数据库挑种子账号 → 调用各平台的"相似用户"接口 → 自动去重并入库新账号。</p>
 </div>
 
 <div class="card" id="bulkCard" style="border:1px dashed var(--accent);">
-  <div class="card-header"><div class="h-badge">⚡</div><h2>一键全量找相似</h2></div>
+  <div class="card-header"><div class="h-badge"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></div><h2>一键全量找相似</h2></div>
   <p style="color:var(--text2); margin:4px 0 12px;">用所有现有客户做种子，跑一遍相似发现。串行执行、任何时刻只能跑一个、断电可续。</p>
   <div id="bulkLauncher">
-    <button class="btn btn-accent" id="bulkBtn" onclick="openBulkModal()">🌐 全量找相似</button>
+    <button class="btn btn-accent" id="bulkBtn" onclick="openBulkModal()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg> 全量找相似</button>
     <span id="bulkActiveHint" style="margin-left:12px; color:var(--text2); font-size:12px;"></span>
   </div>
   <div id="bulkProgress" class="hidden" style="margin-top:8px;">
@@ -25,8 +25,8 @@
     </div>
     <div id="bulkTail" style="font-size:11px; color:var(--text2); margin-top:6px; max-height:120px; overflow:auto;"></div>
     <div class="input-row" style="margin-top:10px; gap:8px;">
-      <button class="btn btn-accent btn-sm hidden" id="bulkResumeBtn" onclick="resumeBulk()">↻ 续跑</button>
-      <button class="btn btn-ghost btn-sm hidden" id="bulkCancelBtn" onclick="cancelBulk()">🚫 放弃此任务</button>
+      <button class="btn btn-accent btn-sm hidden" id="bulkResumeBtn" onclick="resumeBulk()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg> 续跑</button>
+      <button class="btn btn-ghost btn-sm hidden" id="bulkCancelBtn" onclick="cancelBulk()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg> 放弃</button>
       <button class="btn btn-ghost btn-sm" onclick="dismissBulk()">关闭</button>
     </div>
   </div>
@@ -63,7 +63,7 @@
     <label class="platform-filter"><input type="checkbox" class="plat-cb" value="tiktok" checked> TikTok</label>
     <label class="platform-filter platform-x" style="opacity:.5;" title="X 平台没有相似用户接口"><input type="checkbox" class="plat-cb" value="x" disabled> X（不支持）</label>
     <span style="margin-left:auto;"></span>
-    <button class="btn btn-accent btn-sm" onclick="loadList()">🔍 搜索 / 排序</button>
+    <button class="btn btn-accent btn-sm" onclick="loadList()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg> 搜索 / 排序</button>
     <button class="btn btn-ghost btn-sm" onclick="resetFilter()">重置</button>
   </div>
   <div class="input-row" style="margin-top:8px; gap:10px; font-size:12px; color:var(--text2); align-items:center; flex-wrap:wrap;">
@@ -435,7 +435,7 @@ function renderBulkJob(job) {
   document.getElementById('bulkBar').style.width = total ? Math.round(100 * cur / total) + '%' : '0%';
   document.getElementById('bulkSpin').style.display = (job.status === 'running') ? 'inline-block' : 'none';
   document.getElementById('bulkResumeBtn').classList.toggle('hidden', job.status !== 'interrupted');
-  document.getElementById('bulkCancelBtn').classList.toggle('hidden', job.status !== 'interrupted');
+  document.getElementById('bulkCancelBtn').classList.toggle('hidden', job.status !== 'running' && job.status !== 'interrupted');
   // last 8 seed results
   const tail = (job.per_seed || []).slice(-8).reverse();
   document.getElementById('bulkTail').innerHTML = tail.map(e => {

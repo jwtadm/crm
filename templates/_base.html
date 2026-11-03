@@ -1,153 +1,49 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{% block title %}IG Scout{% endblock %}</title>
-<style>
-:root {
-  --bg: #f4f5f9;
-  --surface: #ffffff;
-  --surface2: #f0f1f5;
-  --border: #e2e4ea;
-  --text: #1a1a22;
-  --text2: #5f6470;
-  --accent: #6d5ae6;
-  --accent-hover: #5a47d6;
-  --accent-dim: rgba(109,90,230,0.08);
-  --green: #16a34a;
-  --green-dim: rgba(22,163,74,0.10);
-  --orange: #ea580c;
-  --orange-dim: rgba(234,88,12,0.10);
-  --red: #dc2626;
-  --red-dim: rgba(220,38,38,0.08);
-  --blue: #2563eb;
-  --blue-dim: rgba(37,99,235,0.08);
-  --pink: #db2777;
-  --pink-dim: rgba(219,39,123,0.08);
-  --radius: 10px;
-  --shadow-sm: 0 1px 3px rgba(0,0,0,0.04);
-  --shadow: 0 2px 8px rgba(0,0,0,0.06);
-}
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; background: var(--bg); color: var(--text); line-height: 1.55; -webkit-font-smoothing: antialiased; }
-.container { max-width: 1100px; margin: 0 auto; padding: 0 20px 32px; }
-
-/* Top nav */
-.topnav { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 20px; position: sticky; top: 0; z-index: 100; box-shadow: var(--shadow-sm); }
-.topnav-inner { max-width: 1100px; margin: 0 auto; display: flex; align-items: center; gap: 4px; height: 56px; }
-.brand { font-weight: 700; font-size: 18px; margin-right: 16px; display: flex; align-items: center; gap: 8px; letter-spacing: -0.3px; }
-.brand::before { content: ''; display: inline-block; width: 28px; height: 28px; background: linear-gradient(135deg, var(--accent), #9b8afb); border-radius: 8px; box-shadow: 0 2px 6px rgba(109,90,230,0.3); }
-.brand span { color: var(--accent); }
-.navlink { padding: 8px 14px; border-radius: 8px; color: var(--text2); text-decoration: none; font-size: 13px; font-weight: 500; transition: all .2s ease; }
-.navlink:hover { color: var(--text); background: var(--surface2); }
-.navlink.active { color: var(--accent); background: var(--accent-dim); font-weight: 600; }
-.nav-stats { margin-left: auto; font-size: 12px; color: var(--text2); display: flex; gap: 14px; }
-.nav-stats b { color: var(--text); font-weight: 600; }
-
-/* Header */
-.page-header { padding: 28px 0 16px; }
-.page-header h1 { font-size: 24px; font-weight: 700; letter-spacing: -0.4px; }
-.page-header h1 span { color: var(--accent); }
-.page-header p { color: var(--text2); font-size: 13px; margin-top: 4px; }
-
-/* Cards */
-.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 14px; box-shadow: var(--shadow-sm); }
-.card-header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
-.card-header h2 { font-size: 15px; font-weight: 600; }
-.card-header .h-badge { background: var(--accent); color: #fff; width: 24px; height: 24px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; }
-
-/* Form */
-textarea, input[type="text"], input[type="number"], input[type="password"] {
-  width: 100%; padding: 10px 14px; background: var(--surface); border: 1.5px solid var(--border);
-  border-radius: 8px; color: var(--text); font-size: 13px; font-family: inherit; transition: all .2s ease;
-}
-textarea { font-family: 'SF Mono', 'Fira Code', monospace; resize: vertical; }
-textarea:focus, input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
-.input-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-.input-row label { font-size: 12px; color: var(--text2); }
-.input-row input[type="number"] { width: 90px; }
-
-/* Buttons */
-.btn { padding: 9px 18px; border: none; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all .2s ease; display: inline-flex; align-items: center; gap: 6px; font-family: inherit; }
-.btn:active { transform: scale(0.97); }
-.btn:disabled { opacity: .4; cursor: not-allowed; }
-.btn-accent { background: var(--accent); color: #fff; box-shadow: 0 1px 3px rgba(109,90,230,0.25); }
-.btn-accent:hover:not(:disabled) { background: var(--accent-hover); box-shadow: 0 2px 6px rgba(109,90,230,0.3); }
-.btn-green { background: var(--green); color: #fff; box-shadow: 0 1px 3px rgba(22,163,74,0.2); }
-.btn-orange { background: var(--orange); color: #fff; }
-.btn-ghost { background: transparent; border: 1px solid var(--border); color: var(--text2); }
-.btn-ghost:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
-.btn-sm { padding: 5px 12px; font-size: 12px; }
-.btn-row { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; align-items: center; }
-
-/* Loading */
-.loading { display: none; align-items: center; gap: 8px; color: var(--text2); margin-top: 10px; font-size: 13px; }
-.loading.active { display: flex; }
-@keyframes spin { to { transform: rotate(360deg); } }
-.spinner { width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; }
-
-/* Result item */
-.result-item { display: flex; gap: 10px; align-items: center; padding: 10px 12px; border-radius: 8px; background: var(--surface2); margin-bottom: 6px; transition: all .2s ease; }
-.result-item:hover { background: #e6e8ee; box-shadow: var(--shadow-sm); transform: translateY(-1px); }
-.result-item img { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; background: var(--border); flex-shrink: 0; box-shadow: var(--shadow-sm); }
-.result-item .info { flex: 1; min-width: 0; }
-.result-item .name { font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.result-item .verified { color: var(--accent); font-size: 11px; }
-.result-item .full { color: var(--text2); font-weight: 400; font-size: 12px; }
-.result-item .meta { font-size: 11px; color: var(--text2); margin-top: 2px; }
-.result-item .meta b { color: var(--text); }
-.result-item .bio { font-size: 11px; color: var(--text2); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 700px; }
-.result-item .contact { font-size: 11px; color: var(--green); margin-top: 3px; }
-.result-item .source { font-size: 10px; color: var(--text2); margin-top: 2px; font-style: italic; }
-.platform-tag { padding: 1px 7px; border-radius: 10px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .3px; }
-.platform-instagram { background: var(--pink-dim); color: var(--pink); }
-.platform-tiktok { background: var(--accent-dim); color: var(--accent); }
-.platform-x { background: var(--blue-dim); color: var(--blue); }
-.platform-filter { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; font-size: 12px; cursor: pointer; user-select: none; }
-.platform-filter input { margin: 0; }
-.cat-tag { font-size: 10px; background: var(--accent-dim); color: var(--accent); padding: 1px 7px; border-radius: 10px; }
-.role-badge { padding: 1px 7px; border-radius: 10px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .3px; }
-.role-admin { background: var(--accent-dim); color: var(--accent); }
-.role-staff { background: var(--green-dim); color: var(--green); }
-.nav-user a { color: var(--text2); text-decoration: none; }
-.nav-user a:hover { color: var(--text); }
-
-/* Stats / status */
-.stats-bar { display: flex; gap: 14px; padding: 10px 14px; background: var(--surface2); border-radius: 8px; margin-bottom: 12px; font-size: 12px; }
-.stats-bar .stat { display: flex; align-items: center; gap: 6px; color: var(--text2); }
-.stats-bar .stat .num { font-weight: 700; color: var(--accent); }
-.error-msg { background: var(--red-dim); color: var(--red); padding: 10px 14px; border-radius: 8px; margin-top: 8px; font-size: 12px; border: 1px solid rgba(220,38,38,0.15); }
-.info-msg { background: var(--blue-dim); color: var(--blue); padding: 10px 14px; border-radius: 8px; margin-top: 8px; font-size: 12px; border: 1px solid rgba(37,99,235,0.15); }
-.empty { padding: 24px; text-align: center; color: var(--text2); font-size: 13px; }
-
-/* Selectable list */
-.list-controls { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
-.list { max-height: 480px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; padding: 6px; }
-.list .result-item { background: transparent; cursor: pointer; padding: 8px 10px; }
-.list .result-item.selected { background: var(--accent-dim); }
-.list .result-item input[type="checkbox"] { margin: 0 6px 0 0; accent-color: var(--accent); }
-.score-pill { font-size: 10px; color: var(--text2); background: var(--surface); padding: 1px 6px; border-radius: 8px; }
-
-/* Query chips */
-.chip-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
-.chip { padding: 4px 10px; background: var(--surface2); border: 1px solid var(--border); border-radius: 14px; font-size: 11px; color: var(--text2); }
-.hidden { display: none !important; }
-</style>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body data-active="{{ active or '' }}">
 <nav class="topnav">
   <div class="topnav-inner">
-    <div class="brand"><span>Scout</span></div>
-    <a class="navlink admin-only hidden" id="navSimilarity" href="/similarity">相似发现</a>
-    <a class="navlink admin-only hidden" id="navQuery" href="/query">Query 搜索</a>
-    <a class="navlink" id="navPeople" href="/people">客户管理</a>
-    <a class="navlink admin-only hidden" id="navDatabase" href="/database">平台账号</a>
-    <a class="navlink admin-only hidden" id="navSettings" href="/settings">设置</a>
-    <a class="navlink admin-only hidden" id="navAdminUsers" href="/admin/users">员工/审计</a>
-    <a class="navlink" id="navMe" href="/me">我的偏好</a>
+    <a href="/" class="brand" style="text-decoration:none;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent)"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      <span>Scout</span>
+    </a>
+    <a class="navlink admin-only hidden" id="navSimilarity" href="/similarity">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4"/><path d="M12 18v4"/><path d="M4.93 4.93l2.83 2.83"/><path d="M16.24 16.24l2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="M4.93 19.07l2.83-2.83"/><path d="M16.24 7.76l2.83-2.83"/></svg>
+      相似发现
+    </a>
+    <a class="navlink admin-only hidden" id="navQuery" href="/query">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/><path d="M8 11h6"/><path d="M11 8v6"/></svg>
+      Query
+    </a>
+    <a class="navlink" id="navPeople" href="/people">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      客户管理
+    </a>
+    <a class="navlink admin-only hidden" id="navDatabase" href="/database">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></svg>
+      平台账号
+    </a>
+    <div class="nav-sep admin-only hidden" id="navSep1"></div>
+    <a class="navlink admin-only hidden" id="navSettings" href="/settings">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+      设置
+    </a>
+    <a class="navlink admin-only hidden" id="navAdminUsers" href="/admin/users">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/><path d="m9 12 2 2 4-4"/></svg>
+      员工
+    </a>
+    <a class="navlink" id="navMe" href="/me">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/></svg>
+      我的
+    </a>
     <div class="nav-stats" id="navStats"></div>
-    <div class="nav-user" id="navUser" style="margin-left:14px; display:flex; align-items:center; gap:10px; font-size:12px; color:var(--text2);"></div>
+    <div class="nav-user" id="navUser"></div>
   </div>
 </nav>
 <div class="container">
@@ -162,7 +58,6 @@ function applyRoleVisibility() {
   document.querySelectorAll('.admin-only').forEach(el => {
     el.classList.toggle('hidden', !isAdmin);
   });
-  // Active page highlight (data-active set per page)
   const active = document.body.getAttribute('data-active');
   if (active) {
     const node = document.getElementById('nav' + active.charAt(0).toUpperCase() + active.slice(1));
@@ -175,11 +70,11 @@ async function refreshNavStats() {
     if (!r.ok) return;
     const s = await r.json();
     const by = s.by_platform || {};
-    const parts = [`<b>${s.people}</b> 个人`, `<b>${s.total}</b> 个账号`];
+    const parts = [`<b>${s.people}</b>人`, `<b>${s.total}</b>账号`];
     for (const p of ALL_PLATFORMS) {
-      parts.push(`<b>${by[p] || 0}</b> ${PLATFORM_LABEL[p]}`);
+      parts.push(`<b>${by[p] || 0}</b>${PLATFORM_LABEL[p]}`);
     }
-    document.getElementById('navStats').innerHTML = parts.join(' · ');
+    document.getElementById('navStats').innerHTML = parts.join('<span style="color:var(--border-strong)"> · </span>');
   } catch (e) {}
 }
 async function refreshUser() {
@@ -193,7 +88,7 @@ async function refreshUser() {
   if (window.CURRENT_USER) {
     const u = window.CURRENT_USER;
     const role = u.role === 'admin' ? '<span class="role-badge role-admin">admin</span>' : '<span class="role-badge role-staff">staff</span>';
-    el.innerHTML = `${role} <span>${escapeHtml(u.display_name || u.username)}</span> <a href="/change_password" title="修改自己的密码">改密码</a> <a href="#" id="logoutBtn">退出</a>`;
+    el.innerHTML = `${role} <span>${escapeHtml(u.display_name || u.username)}</span> <a href="/change_password">改密码</a> <a href="#" id="logoutBtn">退出</a>`;
     document.getElementById('logoutBtn').onclick = async (e) => {
       e.preventDefault();
       await fetch('/api/auth/logout', {method: 'POST'});
@@ -242,7 +137,7 @@ function renderAccount(a, opts={}) {
     <img src="${a.profile_pic_url || ''}" alt="" onerror="this.style.display='none'">
     <div class="info">
       <div class="name">${platformTag(a.platform)} @${escapeHtml(a.username)} ${verified} <span class="full">${escapeHtml(a.full_name)}</span> ${cat} ${score}</div>
-      <div class="meta">${stats.join(' · ') || '<span style="color:var(--text2)">暂无统计数据</span>'}</div>
+      <div class="meta">${stats.join(' · ') || '<span style="color:var(--text-3)">暂无统计数据</span>'}</div>
       ${bio}
       ${contactHtml}
       ${src}

@@ -13,7 +13,7 @@ APP_URL = "http://localhost:5001"
 APP_PORT = 5001
 
 ADMIN_USERNAME = "admin"
-ADMIN_PASSWORD = "admin12345"   # rotated by _lib.seed.ensure_admin() on every run
+ADMIN_PASSWORD = os.environ.get("SCOUT_RRWEB_ADMIN_PW", "admin12345")  # test fixture pw; rotated each run
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 TEST_DB_PATH = (REPO_ROOT / "tests" / ".scout-test.db").resolve()

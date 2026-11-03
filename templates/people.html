@@ -3,15 +3,15 @@
 {% block title %}客户管理 · Scout{% endblock %}
 {% block content %}
 <div class="page-header">
-  <h1>客户 <span>管理</span></h1>
+  <h1><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-5px;margin-right:8px;color:var(--accent)"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>客户 <span>管理</span></h1>
   <p>按"人"为单位的总览。状态/标签/负责人可就地编辑；点 ✉ 联系会同时打开邮件客户端 + 标记已联系。</p>
 </div>
 
 <div class="card admin-only hidden" id="hydrateCard" style="border:1px dashed var(--accent);">
-  <div class="card-header"><div class="h-badge">🌊</div><h2>批量补全（hydrate placeholder）</h2></div>
+  <div class="card-header"><div class="h-badge"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2s-6 7.5-6 12a6 6 0 0 0 12 0c0-4.5-6-12-6-12z"/></svg></div><h2>批量补全（hydrate placeholder）</h2></div>
   <p style="color:var(--text2); margin:4px 0 12px;">把 <code>import:&lt;handle&gt;</code> 占位账号升格成真账号（拉 pk_id + bio + email），之后才能拿它们当「相似发现」种子。串行执行、断电可续。</p>
   <div id="hydrateLauncher">
-    <button class="btn btn-accent" id="hydrateBtn" onclick="openHydrateModal()">🌊 批量补全</button>
+    <button class="btn btn-accent" id="hydrateBtn" onclick="openHydrateModal()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2s-6 7.5-6 12a6 6 0 0 0 12 0c0-4.5-6-12-6-12z"/></svg> 批量补全</button>
     <span id="hydrateActiveHint" style="margin-left:12px; color:var(--text2); font-size:12px;"></span>
   </div>
   <div id="hydrateProgress" class="hidden" style="margin-top:8px;">
@@ -25,8 +25,8 @@
     </div>
     <div id="hydrateTail" style="font-size:11px; color:var(--text2); margin-top:6px; max-height:120px; overflow:auto;"></div>
     <div class="input-row" style="margin-top:10px; gap:8px;">
-      <button class="btn btn-accent btn-sm hidden" id="hydrateResumeBtn" onclick="resumeHydrate()">↻ 续跑</button>
-      <button class="btn btn-ghost btn-sm hidden" id="hydrateCancelBtn" onclick="cancelHydrate()">🚫 放弃此任务</button>
+      <button class="btn btn-accent btn-sm hidden" id="hydrateResumeBtn" onclick="resumeHydrate()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg> 续跑</button>
+      <button class="btn btn-ghost btn-sm hidden" id="hydrateCancelBtn" onclick="cancelHydrate()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg> 放弃</button>
       <button class="btn btn-ghost btn-sm" onclick="dismissHydrate()">关闭</button>
     </div>
   </div>
@@ -553,10 +553,10 @@ function renderRow(p) {
   const statusOpts = statusOptionsFor(p.status).map(([v, l]) => `<option value="${v}" ${v === p.status ? 'selected' : ''}>${l}</option>`).join('');
   const mailto = buildMailto(p);
   const contactBtn = mailto
-    ? `<a class="btn-contact" href="${mailto}" onclick="onContact(${p.id})">✉</a>`
-    : `<span style="color:var(--text2); font-size:11px;">—</span>`;
+    ? `<a class="btn-contact" href="${mailto}" onclick="onContact(${p.id})" title="发邮件"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg></a>`
+    : `<span style="color:var(--text-3); font-size:11px;">—</span>`;
   const hydrateBtn = (p.handles && p.handles.length > 0)
-    ? `<button class="btn-hydrate" onclick="onHydrate(${p.id}, this)" title="从平台拉取真实数据（每个 handle ~$0.001-0.002）">🔄</button>`
+    ? `<button class="btn-hydrate" onclick="onHydrate(${p.id}, this)" title="从平台拉取真实数据"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg></button>`
     : '';
   const rejectBtn = isRejected
     ? `<button class="btn btn-ghost btn-sm" style="padding:3px 8px;font-size:11px;" onclick="onUnreject(${p.id})">取消标记</button>`
@@ -796,7 +796,7 @@ async function renderHandlesDrawer() {
     ? `<div style="margin-top:24px; padding-top:14px; border-top: 1px dashed var(--border);">
          <button class="btn btn-ghost btn-sm" style="color:var(--red); border-color:var(--red);"
                  onclick="onDeletePerson(${person.id}, ${JSON.stringify(person.full_name || '').replace(/"/g, '&quot;')})">
-           🗑 删除客户（永久，不可恢复）
+           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg> 删除客户（永久，不可恢复）
          </button>
          <div style="font-size:11px; color:var(--text2); margin-top:6px;">
            只在录入错了 / 测试残留时用。想"以后避开"请走『不适合』按钮。
@@ -1056,7 +1056,7 @@ async function loadReminders() {
       const color = due ? 'var(--orange)' : 'var(--text2)';
       return `
         <div style="padding:4px 8px; background:var(--surface2); border-radius:6px; margin-bottom:4px;">
-          <span style="color:${color};">${due ? '🔔 ' : '⏰ '}${escapeHtml(when)}</span>
+          <span style="color:${color};">${due ? '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>' : '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>'}${escapeHtml(when)}</span>
           ${it.content ? ' · ' + escapeHtml(it.content) : ''}
           <button class="btn-ghost" style="background:none; border:none; color:var(--text2); cursor:pointer; font-size:11px; float:right;"
                   onclick="onDismissReminder(${it.id})">完成</button>
@@ -1113,7 +1113,7 @@ async function pollDueReminders() {
       const note = it.content ? ' · ' + escapeHtml(it.content) : '';
       return `
         <div style="display:flex; align-items:center; gap:10px;">
-          <span>🔔 提醒到了 (${escapeHtml(when)})：跟进 <b>${escapeHtml(name)}</b>${note}</span>
+          <span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg> 提醒到了 (${escapeHtml(when)})：跟进 <b>${escapeHtml(name)}</b>${note}</span>
           <button onclick="openHandlesDrawer(${it.person_id})" class="btn btn-ghost btn-sm" style="padding:2px 8px; font-size:11px;">打开客户</button>
           <button onclick="onDismissReminder(${it.id})" class="btn btn-ghost btn-sm" style="padding:2px 8px; font-size:11px;">标记完成</button>
         </div>`;
@@ -1818,7 +1818,7 @@ function renderHydrateJob(job) {
   document.getElementById('hydrateBar').style.width = total ? Math.round(100 * cur / total) + '%' : '0%';
   document.getElementById('hydrateSpin').style.display = (job.status === 'running') ? 'inline-block' : 'none';
   document.getElementById('hydrateResumeBtn').classList.toggle('hidden', job.status !== 'interrupted');
-  document.getElementById('hydrateCancelBtn').classList.toggle('hidden', job.status !== 'interrupted');
+  document.getElementById('hydrateCancelBtn').classList.toggle('hidden', job.status !== 'running' && job.status !== 'interrupted');
   const tail = (job.per_item || []).slice(-8).reverse();
   document.getElementById('hydrateTail').innerHTML = tail.map(e => {
     const tag = e.error ? `<span style="color:#dc2626;">err: ${escapeHtml(e.error)}</span>`

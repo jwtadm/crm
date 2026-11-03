@@ -2006,19 +2006,18 @@ def api_similarity_bulk_resume(job_id: str):
 @app.route("/api/similarity/bulk/<job_id>/cancel", methods=["POST"])
 @auth.admin_required
 def api_similarity_bulk_cancel(job_id: str):
-    """Abandon an interrupted job so the next /bulk/start isn't blocked.
-    Only allowed from 'interrupted' (a running job's worker thread can't be
-    safely killed mid-seed without leaving partial ingest state, and 'done'
-    needs no cancel). Sets status='cancelled' so find_active_job ignores it."""
+    """Abandon a running or interrupted job. Sets status='cancelled' so the
+    worker loop (which checks each iteration) stops, and find_active_job
+    ignores it."""
     job, _ = bulk_similarity.load_job(job_id)
     if not job:
         return jsonify({"error": "not_found"}), 404
-    if job.get("status") != "interrupted":
-        return jsonify({"error": "not_interrupted",
-                        "detail": f"only interrupted jobs can be cancelled (this one is {job.get('status')})"}), 400
+    if job.get("status") not in ("interrupted", "running"):
+        return jsonify({"error": "not_cancellable",
+                        "detail": f"only running/interrupted jobs can be cancelled (this one is {job.get('status')})"}), 400
     with db.tx() as c:
         cur = c.execute(
-            "UPDATE similarity_jobs SET status='cancelled' WHERE id=? AND status='interrupted'",
+            "UPDATE similarity_jobs SET status='cancelled' WHERE id=? AND status IN ('running','interrupted')",
             (job_id,),
         )
         if cur.rowcount != 1:
@@ -2179,12 +2178,12 @@ def api_hydrate_bulk_cancel(job_id: str):
     job, _ = bulk_hydrate.load_job(job_id)
     if not job:
         return jsonify({"error": "not_found"}), 404
-    if job.get("status") != "interrupted":
-        return jsonify({"error": "not_interrupted",
-                        "detail": f"only interrupted jobs can be cancelled (this one is {job.get('status')})"}), 400
+    if job.get("status") not in ("interrupted", "running"):
+        return jsonify({"error": "not_cancellable",
+                        "detail": f"only running/interrupted jobs can be cancelled (this one is {job.get('status')})"}), 400
     with db.tx() as c:
         cur = c.execute(
-            "UPDATE hydrate_jobs SET status='cancelled' WHERE id=? AND status='interrupted'",
+            "UPDATE hydrate_jobs SET status='cancelled' WHERE id=? AND status IN ('running','interrupted')",
             (job_id,),
         )
         if cur.rowcount != 1:

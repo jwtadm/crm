@@ -60,18 +60,19 @@ def wipe_fixtures() -> None:
     c = _conn()
     try:
         c.execute(
-            f"""DELETE FROM people WHERE id IN (
+            """DELETE FROM people WHERE id IN (
                 SELECT DISTINCT person_id FROM platform_accounts
-                WHERE username LIKE '{USERNAME_PREFIX}%'
-                   OR source   LIKE '%{FIXTURE_TAG}%'
-            )"""
+                WHERE username LIKE ?
+                   OR source   LIKE ?
+            )""",
+            (USERNAME_PREFIX + "%", "%" + FIXTURE_TAG + "%"),
         )
-        c.execute(f"DELETE FROM people WHERE full_name LIKE '{DISPLAY_PREFIX}%'")
-        c.execute(f"DELETE FROM people WHERE email LIKE '{FIXTURE_TAG}_%@%'")
+        c.execute("DELETE FROM people WHERE full_name LIKE ?", (DISPLAY_PREFIX + "%",))
+        c.execute("DELETE FROM people WHERE email LIKE ?", (FIXTURE_TAG + "_%@%",))
         # Belt-and-suspenders: any orphan platform_accounts left by partial
         # writes (shouldn't happen with the CASCADE, but cheap insurance).
-        c.execute(f"DELETE FROM platform_accounts WHERE username LIKE '{USERNAME_PREFIX}%'")
-        c.execute(f"DELETE FROM platform_accounts WHERE source   LIKE '%{FIXTURE_TAG}%'")
+        c.execute("DELETE FROM platform_accounts WHERE username LIKE ?", (USERNAME_PREFIX + "%",))
+        c.execute("DELETE FROM platform_accounts WHERE source LIKE ?", ("%" + FIXTURE_TAG + "%",))
         c.commit()
     finally:
         c.close()

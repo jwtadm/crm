@@ -2,6 +2,7 @@
 a dedicated staff user; the test logs in as them, adds a customer through
 the modal, asserts the new row appears + is auto-assigned to that staff.
 """
+import os
 import sys
 sys.path.insert(0, "/root/ig_scraper")
 from lib import auth, db
@@ -37,7 +38,7 @@ def seed() -> None:
         username=FIXTURE_USERNAME,
         email="rrwebfx_addcust@stub.local",
         display_name="RRWebFx AddCust Staff",
-        password="rrwebfx-addcust-pw",
+        password=os.environ.get("SCOUT_RRWEB_STAFF_PW", "rrwebfx-addcust-pw"),
         role="staff",
         is_active=1,
         must_change_pw=0,
