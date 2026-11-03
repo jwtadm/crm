@@ -271,14 +271,22 @@ def init_db() -> None:
 
 @contextmanager
 def tx():
-    """Write transaction context. Autocommit mode means we must BEGIN explicitly."""
+    """Write transaction context. Uses deferred BEGIN so read-only callers
+    (like get_user) don't grab the write lock. Autocommit mode (isolation_level=None)
+    means we must BEGIN/COMMIT explicitly."""
     c = _conn()
+    begun = False
     try:
-        c.execute("BEGIN IMMEDIATE")
+        c.execute("BEGIN")
+        begun = True
         yield c
         c.execute("COMMIT")
     except Exception:
-        c.execute("ROLLBACK")
+        if begun:
+            try:
+                c.execute("ROLLBACK")
+            except Exception:
+                pass
         raise
     finally:
         c.close()
