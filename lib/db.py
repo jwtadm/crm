@@ -1049,14 +1049,12 @@ def get_daily_overview(c: sqlite3.Connection, start_ts: int, end_ts: int,
         [start_ts, end_ts] + user_param,
     ).fetchone()["n"]
 
-    # "联系人数" now uses status_events (same source as employee detail & pipeline)
-    # instead of last_contacted_at — last_contacted_at is overwritten on every
-    # contact so looking back at old ranges was permanently inaccurate (RC-1).
+    # "联系人数" 使用 last_contacted_at 来判断联系时间
+    # 因为历史数据可能没有写入 status_events
     contacted = c.execute(
-        f"""SELECT COUNT(DISTINCT se.person_id) AS n FROM status_events se
-            LEFT JOIN people p ON p.id = se.person_id
-            WHERE se.new_status = '已联系' AND se.created_at >= ? AND se.created_at < ?
-            {user_filter}""",
+        f"""SELECT COUNT(*) AS n FROM people
+           WHERE last_contacted_at >= ? AND last_contacted_at < ?
+           {user_filter}""",
         [start_ts, end_ts] + user_param,
     ).fetchone()["n"]
 
@@ -1112,15 +1110,14 @@ def get_daily_overview(c: sqlite3.Connection, start_ts: int, end_ts: int,
     ).fetchall():
         u_new_map[r["assigned_user_id"]] = r["n"]
 
-    # "联系" per-user now uses status_events (same source as summary KPI)
+    # "联系" per-user: 使用 last_contacted_at 来判断联系时间
+    # 因为历史数据可能没有写入 status_events
     u_contacted_map = {}
     for r in c.execute(
-        f"""SELECT p.assigned_user_id, COUNT(DISTINCT se.person_id) AS n
-           FROM status_events se
-           LEFT JOIN people p ON p.id = se.person_id
-           WHERE se.new_status = '已联系' AND se.created_at >= ? AND se.created_at < ?
+        f"""SELECT assigned_user_id, COUNT(*) AS n FROM people
+           WHERE last_contacted_at >= ? AND last_contacted_at < ?
            {user_filter}
-           GROUP BY p.assigned_user_id""",
+           GROUP BY assigned_user_id""",
         [start_ts, end_ts] + user_param,
     ).fetchall():
         u_contacted_map[r["assigned_user_id"]] = r["n"]

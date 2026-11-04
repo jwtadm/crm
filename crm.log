@@ -533,3 +533,31 @@ TypeError: can only concatenate tuple (not "list") to tuple
 127.0.0.1 - - [04/Nov/2026 23:32:20] "GET /api/stats/trends?days=1 HTTP/1.1" 200 -
 127.0.0.1 - - [04/Nov/2026 23:32:22] "GET /api/stats/trends?days=90 HTTP/1.1" 200 -
 127.0.0.1 - - [04/Nov/2026 23:32:23] "GET /api/stats?range=all HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:35:26] "GET /api/stats/trends?days=1 HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:35:26] "GET /api/stats?range=today HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:35:27] "GET /api/stats/trends?days=1 HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:35:27] "GET /api/stats?range=yesterday HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:35:29] "GET /api/stats/trends?days=7 HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:35:30] "GET /api/stats?range=week HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:35:30] "GET /api/stats/trends?days=30 HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:35:31] "GET /api/stats?range=month HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:39:03] "GET /stats HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:39:03] "GET /static/style.css HTTP/1.1" 304 -
+127.0.0.1 - - [04/Nov/2026 23:39:03] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:39:03] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:39:03] "GET /api/db/stats HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:39:03] "GET /api/admin/users HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:39:03] "GET /api/stats?range=today HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:39:03] "GET /api/stats/trends?days=1 HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:39:13] "GET /api/stats?range=today&user_id=11 HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:39:23] "GET /api/stats?range=today HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:39:25] "GET /api/stats?range=today&user_id=11 HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:39:34] "GET /api/stats/trends?days=90&user_id=11 HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:39:34] "GET /api/stats?range=all&user_id=11 HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:40:01] "GET /api/stats/trends?days=1&user_id=11 HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:40:01] "GET /api/stats?range=today&user_id=11 HTTP/1.1" 200 -
+ * Detected change in 'D:\\phpstudy_pro\\WWW\\crm\\lib\\db.py', reloading
+ * Restarting with stat
+[watchdog] started (tick every 60s, stale threshold 300s)
+ * Debugger is active!
+ * Debugger PIN: 917-343-103
