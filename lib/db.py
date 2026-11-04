@@ -1353,6 +1353,10 @@ def get_trends(c: sqlite3.Connection, days: int = 7,
     match the KPI cards.
     """
     import datetime
+    import pytz
+    
+    # Use China timezone (UTC+8) for consistent date calculations
+    china_tz = pytz.timezone('Asia/Shanghai')
 
     user_filter = ""
     user_param: list = []
@@ -1363,8 +1367,8 @@ def get_trends(c: sqlite3.Connection, days: int = 7,
     # Build list of (day_start_dt, day_start_ts, day_end_ts) tuples
     if start_ts is not None and end_ts is not None:
         # Custom range: iterate day by day from start to end
-        day_dt = datetime.datetime.fromtimestamp(start_ts).replace(hour=0, minute=0, second=0, microsecond=0)
-        end_dt = datetime.datetime.fromtimestamp(end_ts)
+        day_dt = datetime.datetime.fromtimestamp(start_ts, tz=china_tz).replace(hour=0, minute=0, second=0, microsecond=0)
+        end_dt = datetime.datetime.fromtimestamp(end_ts, tz=china_tz)
         day_list = []
         while day_dt < end_dt:
             day_end = day_dt + datetime.timedelta(days=1)
@@ -1375,7 +1379,7 @@ def get_trends(c: sqlite3.Connection, days: int = 7,
             ))
             day_dt = day_end
     else:
-        now = datetime.datetime.now()
+        now = datetime.datetime.now(china_tz)
         day_list = []
         for i in range(days - 1, -1, -1):
             dt = now - datetime.timedelta(days=i)

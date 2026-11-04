@@ -1511,12 +1511,16 @@ def api_stats():
       user_id: filter to specific user (admin only; staff always sees own)
     """
     import datetime
+    import pytz
+    
     u = auth.current_user()
     args = request.args
 
     # Parse date range
     range_preset = (args.get("range") or "today").strip()
-    now = datetime.datetime.now()
+    # Use China timezone (UTC+8) for consistent date calculations
+    china_tz = pytz.timezone('Asia/Shanghai')
+    now = datetime.datetime.now(china_tz)
 
     if "start" in args and "end" in args:
         start_ts = int(args["start"])
