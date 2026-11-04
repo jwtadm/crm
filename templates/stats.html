@@ -380,9 +380,26 @@ async function loadTrends() {
     if (customStart && customEnd) {
       // Pass custom date range so trend chart follows the selected period (RC-7b)
       url += `start=${customStart}&end=${customEnd}`;
+    } else if (currentRange === 'today' || currentRange === 'yesterday') {
+      // For today/yesterday, pass the actual date range
+      const now = new Date();
+      let targetDate;
+      if (currentRange === 'yesterday') {
+        targetDate = new Date(now);
+        targetDate.setDate(targetDate.getDate() - 1);
+      } else {
+        targetDate = now;
+      }
+      // Use China timezone (UTC+8)
+      const chinaOffset = 8 * 60 * 60 * 1000;
+      const dayStart = new Date(targetDate);
+      dayStart.setHours(0, 0, 0, 0);
+      const startTs = Math.floor((dayStart.getTime() - chinaOffset) / 1000);
+      const endTs = startTs + 86400;
+      url += `start=${startTs}&end=${endTs}`;
     } else {
-      // Match trend days to the preset range
-      const presetDays = {all:90, today:1, yesterday:1, week:7, month:30};
+      // For week/month/all, use days parameter
+      const presetDays = {all:90, week:7, month:30};
       const d = presetDays[currentRange] || 7;
       url += `days=${d}`;
     }
