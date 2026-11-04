@@ -57,25 +57,6 @@
   color: var(--accent); padding: 2px 8px; border-radius: var(--r-full);
 }
 
-/* Pipeline */
-.pipeline-row {
-  display: flex; align-items: center; gap: 0; margin: 8px 0;
-  flex-wrap: wrap;
-}
-.pipeline-stage {
-  display: flex; align-items: center; gap: 8px;
-  padding: 10px 18px;
-  background: var(--surface-2); border-radius: var(--r);
-  min-width: 120px; flex: 1;
-}
-.pipeline-arrow {
-  color: var(--text-3); font-size: 1.2rem; padding: 0 4px;
-  flex-shrink: 0;
-}
-.pipeline-count { font-size: 1.3rem; font-weight: 800; }
-.pipeline-label { font-size: .78rem; color: var(--text-2); }
-.pipeline-pct { font-size: .72rem; color: var(--text-3); }
-
 /* Tables */
 .stats-table {
   width: 100%; border-collapse: collapse; font-size: .85rem;
@@ -206,12 +187,6 @@
   <div class="kpi green"><div class="kpi-value" id="kpiDeals">-</div><div class="kpi-label">成交客户</div></div>
   <div class="kpi red"><div class="kpi-value" id="kpiRejected">-</div><div class="kpi-label">标记不合适</div></div>
   <div class="kpi purple"><div class="kpi-value" id="kpiTotal">-</div><div class="kpi-label">客户总数</div><div class="kpi-sub" id="kpiVerified"></div></div>
-</div>
-
-<!-- ─── Pipeline ──────────────────────────────────────────── -->
-<div class="stats-section">
-  <h2>🔄 客户管道 <span class="badge" id="pipelinePct"></span></h2>
-  <div id="pipelineContainer"></div>
 </div>
 
 <!-- ─── Trend Chart ───────────────────────────────────────── -->
@@ -389,7 +364,6 @@ async function loadStats() {
     document.getElementById('statsLoading').style.display = 'none';
     renderDateDisplay(data.range);
     renderKPIs(data);
-    renderPipeline(data.pipeline, data.total_people);
     renderUserTable(data.per_user);
     renderDist('platformDist', data.platform, d => PLATFORM_LABELS[d.platform] || d.platform, PLATFORM_COLORS);
     renderDist('intentDist', data.intent, d => d.intent);
@@ -445,41 +419,6 @@ function renderKPIs(data) {
   document.getElementById('kpiTotal').textContent = data.total_people;
   document.getElementById('kpiVerified').textContent =
     `认证 ${data.verified_count} · 商业 ${data.business_count}`;
-}
-
-function renderPipeline(pipeline, total) {
-  const container = document.getElementById('pipelineContainer');
-  // Sort by standard order
-  const ordered = STATUS_ORDER.map(s => pipeline.find(p => p.status === s) || {status:s, count:0});
-  // Add any extras
-  pipeline.forEach(p => { if (!STATUS_ORDER.includes(p.status)) ordered.push(p); });
-
-  const maxCount = Math.max(...ordered.map(p => p.count), 1);
-  let html = '<div class="pipeline-row">';
-  ordered.forEach((p, i) => {
-    const pct = total > 0 ? ((p.count / total) * 100).toFixed(1) : 0;
-    const color = STATUS_COLORS[p.status] || 'var(--text-3)';
-    html += `
-      <div class="pipeline-stage">
-        <div>
-          <div class="pipeline-count" style="color:${color}">${p.count}</div>
-          <div class="pipeline-label">${p.status}</div>
-          <div class="pipeline-pct">${pct}%</div>
-        </div>
-      </div>`;
-    if (i < ordered.length - 1) html += '<div class="pipeline-arrow">→</div>';
-  });
-  html += '</div>';
-
-  // Conversion rates
-  const contactedN = (ordered.find(p=>p.status==='已联系')||{count:0}).count;
-  const repliedN = (ordered.find(p=>p.status==='已回复')||{count:0}).count;
-  const dealsN = (ordered.find(p=>p.status==='已成交')||{count:0}).count;
-  const totalForConv = total || 1;
-  document.getElementById('pipelinePct').textContent =
-    `联系率 ${(contactedN/totalForConv*100).toFixed(1)}% · 回复率 ${(repliedN/totalForConv*100).toFixed(1)}% · 成交率 ${(dealsN/totalForConv*100).toFixed(1)}%`;
-
-  container.innerHTML = html;
 }
 
 function renderUserTable(perUser) {
