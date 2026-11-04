@@ -511,14 +511,11 @@ function renderTrendChart(trends) {
   const container = document.getElementById('trendChart');
   if (!trends || !trends.length) { container.innerHTML = '<div class="stats-empty">暂无趋势数据</div>'; return; }
 
-  // Update badge text based on actual days shown
+  // Update badge text based on current range selection
   const badge = document.getElementById('trendBadge');
   if (badge) {
-    const days = trends.length;
-    if (days === 1) badge.textContent = '今天';
-    else if (days <= 7) badge.textContent = `近${days}天`;
-    else if (days <= 30) badge.textContent = `近${days}天`;
-    else badge.textContent = `近${days}天`;
+    const rangeLabels = {all: '全部', today: '今天', yesterday: '昨天', week: '近7天', month: '近30天'};
+    badge.textContent = rangeLabels[currentRange] || `近${trends.length}天`;
   }
 
   const maxVal = Math.max(...trends.flatMap(t => [t.new_customers, t.contacted, t.emails_sent, t.replies, t.deals, t.rejected]), 1);

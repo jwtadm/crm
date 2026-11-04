@@ -620,3 +620,498 @@ TypeError: can only concatenate tuple (not "list") to tuple
 [watchdog] started (tick every 60s, stale threshold 300s)
  * Debugger is active!
  * Debugger PIN: 917-343-103
+127.0.0.1 - - [05/Nov/2026 00:15:33] "GET /stats HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:15:33] "GET /static/style.css HTTP/1.1" 304 -
+127.0.0.1 - - [05/Nov/2026 00:15:33] "GET /api/db/stats HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:15:33] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:15:33] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:15:33] "GET /api/admin/users HTTP/1.1" 200 -
+Traceback (most recent call last):
+  File "C:\Users\haorab\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\haorab\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\lib\auth.py", line 204, in wrapper
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\app.py", line 1514, in api_stats
+    import pytz
+ModuleNotFoundError: No module named 'pytz'
+127.0.0.1 - - [05/Nov/2026 00:15:33] "GET /api/stats?range=today HTTP/1.1" 500 -
+Traceback (most recent call last):
+  File "C:\Users\haorab\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\haorab\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\lib\auth.py", line 204, in wrapper
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\app.py", line 1604, in api_stats_trends
+    trends = db.get_trends(c, days, user_id=target_user_id,
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\lib\db.py", line 1356, in get_trends
+    import pytz
+ModuleNotFoundError: No module named 'pytz'
+127.0.0.1 - - [05/Nov/2026 00:15:33] "GET /api/stats/trends?days=1 HTTP/1.1" 500 -
+127.0.0.1 - - [05/Nov/2026 00:15:37] "GET /static/style.css HTTP/1.1" 304 -
+127.0.0.1 - - [05/Nov/2026 00:15:37] "GET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1" 404 -
+127.0.0.1 - - [05/Nov/2026 00:15:43] "GET /stats HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:15:43] "GET /static/style.css HTTP/1.1" 304 -
+127.0.0.1 - - [05/Nov/2026 00:15:43] "GET /api/db/stats HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:15:43] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:15:43] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:15:43] "GET /api/admin/users HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:15:43] "GET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1" 404 -
+Traceback (most recent call last):
+  File "C:\Users\haorab\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\haorab\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\lib\auth.py", line 204, in wrapper
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\app.py", line 1514, in api_stats
+    import pytz
+ModuleNotFoundError: No module named 'pytz'
+127.0.0.1 - - [05/Nov/2026 00:15:43] "GET /api/stats?range=today HTTP/1.1" 500 -
+Traceback (most recent call last):
+  File "C:\Users\haorab\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\haorab\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\lib\auth.py", line 204, in wrapper
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\app.py", line 1604, in api_stats_trends
+    trends = db.get_trends(c, days, user_id=target_user_id,
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\lib\db.py", line 1356, in get_trends
+    import pytz
+ModuleNotFoundError: No module named 'pytz'
+127.0.0.1 - - [05/Nov/2026 00:15:43] "GET /api/stats/trends?days=1 HTTP/1.1" 500 -
+127.0.0.1 - - [05/Nov/2026 00:16:46] "GET /stats HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:16:46] "GET /static/style.css HTTP/1.1" 304 -
+127.0.0.1 - - [05/Nov/2026 00:16:46] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:16:46] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:16:46] "GET /api/db/stats HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:16:46] "GET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1" 404 -
+127.0.0.1 - - [05/Nov/2026 00:16:46] "GET /api/admin/users HTTP/1.1" 200 -
+Traceback (most recent call last):
+  File "C:\Users\haorab\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\haorab\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\lib\auth.py", line 204, in wrapper
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\app.py", line 1514, in api_stats
+    import pytz
+ModuleNotFoundError: No module named 'pytz'
+127.0.0.1 - - [05/Nov/2026 00:16:46] "GET /api/stats?range=today HTTP/1.1" 500 -
+Traceback (most recent call last):
+  File "C:\Users\haorab\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\haorab\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\lib\auth.py", line 204, in wrapper
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\app.py", line 1604, in api_stats_trends
+    trends = db.get_trends(c, days, user_id=target_user_id,
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\lib\db.py", line 1356, in get_trends
+    import pytz
+ModuleNotFoundError: No module named 'pytz'
+127.0.0.1 - - [05/Nov/2026 00:16:46] "GET /api/stats/trends?days=1 HTTP/1.1" 500 -
+127.0.0.1 - - [05/Nov/2026 00:16:47] "GET /stats HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:16:47] "GET /static/style.css HTTP/1.1" 304 -
+127.0.0.1 - - [05/Nov/2026 00:16:47] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:16:47] "GET /api/db/stats HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:16:47] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:16:47] "GET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1" 404 -
+127.0.0.1 - - [05/Nov/2026 00:16:47] "GET /api/admin/users HTTP/1.1" 200 -
+Traceback (most recent call last):
+  File "C:\Users\haorab\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\haorab\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\lib\auth.py", line 204, in wrapper
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\app.py", line 1514, in api_stats
+    import pytz
+ModuleNotFoundError: No module named 'pytz'
+127.0.0.1 - - [05/Nov/2026 00:16:47] "GET /api/stats?range=today HTTP/1.1" 500 -
+Traceback (most recent call last):
+  File "C:\Users\haorab\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\haorab\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\lib\auth.py", line 204, in wrapper
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\app.py", line 1604, in api_stats_trends
+    trends = db.get_trends(c, days, user_id=target_user_id,
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\lib\db.py", line 1356, in get_trends
+    import pytz
+ModuleNotFoundError: No module named 'pytz'
+127.0.0.1 - - [05/Nov/2026 00:16:47] "GET /api/stats/trends?days=1 HTTP/1.1" 500 -
+127.0.0.1 - - [05/Nov/2026 00:16:47] "GET /stats HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:16:47] "GET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1" 404 -
+127.0.0.1 - - [05/Nov/2026 00:16:47] "GET /static/style.css HTTP/1.1" 304 -
+127.0.0.1 - - [05/Nov/2026 00:16:47] "GET /api/db/stats HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:16:47] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:16:47] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:16:47] "GET /api/admin/users HTTP/1.1" 200 -
+Traceback (most recent call last):
+  File "C:\Users\haorab\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\haorab\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\lib\auth.py", line 204, in wrapper
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\app.py", line 1514, in api_stats
+    import pytz
+ModuleNotFoundError: No module named 'pytz'
+127.0.0.1 - - [05/Nov/2026 00:16:47] "GET /api/stats?range=today HTTP/1.1" 500 -
+Traceback (most recent call last):
+  File "C:\Users\haorab\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\haorab\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\lib\auth.py", line 204, in wrapper
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\app.py", line 1604, in api_stats_trends
+    trends = db.get_trends(c, days, user_id=target_user_id,
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\lib\db.py", line 1356, in get_trends
+    import pytz
+ModuleNotFoundError: No module named 'pytz'
+127.0.0.1 - - [05/Nov/2026 00:16:47] "GET /api/stats/trends?days=1 HTTP/1.1" 500 -
+127.0.0.1 - - [05/Nov/2026 00:16:47] "GET /stats HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:16:47] "GET /static/style.css HTTP/1.1" 304 -
+127.0.0.1 - - [05/Nov/2026 00:16:47] "GET /api/db/stats HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:16:47] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:16:47] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:16:47] "GET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1" 404 -
+127.0.0.1 - - [05/Nov/2026 00:16:47] "GET /api/admin/users HTTP/1.1" 200 -
+Traceback (most recent call last):
+  File "C:\Users\haorab\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\haorab\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\lib\auth.py", line 204, in wrapper
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\app.py", line 1514, in api_stats
+    import pytz
+ModuleNotFoundError: No module named 'pytz'
+127.0.0.1 - - [05/Nov/2026 00:16:47] "GET /api/stats?range=today HTTP/1.1" 500 -
+Traceback (most recent call last):
+  File "C:\Users\haorab\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\haorab\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\lib\auth.py", line 204, in wrapper
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\app.py", line 1604, in api_stats_trends
+    trends = db.get_trends(c, days, user_id=target_user_id,
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\lib\db.py", line 1356, in get_trends
+    import pytz
+ModuleNotFoundError: No module named 'pytz'
+127.0.0.1 - - [05/Nov/2026 00:16:48] "GET /api/stats/trends?days=1 HTTP/1.1" 500 -
+127.0.0.1 - - [05/Nov/2026 00:16:48] "GET /stats HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:16:48] "GET /static/style.css HTTP/1.1" 304 -
+127.0.0.1 - - [05/Nov/2026 00:16:48] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:16:48] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:16:48] "GET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1" 404 -
+127.0.0.1 - - [05/Nov/2026 00:16:48] "GET /api/db/stats HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:16:48] "GET /api/admin/users HTTP/1.1" 200 -
+Traceback (most recent call last):
+  File "C:\Users\haorab\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\haorab\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\lib\auth.py", line 204, in wrapper
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\app.py", line 1514, in api_stats
+    import pytz
+ModuleNotFoundError: No module named 'pytz'
+127.0.0.1 - - [05/Nov/2026 00:16:48] "GET /api/stats?range=today HTTP/1.1" 500 -
+Traceback (most recent call last):
+  File "C:\Users\haorab\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\haorab\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\lib\auth.py", line 204, in wrapper
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\app.py", line 1604, in api_stats_trends
+    trends = db.get_trends(c, days, user_id=target_user_id,
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\lib\db.py", line 1356, in get_trends
+    import pytz
+ModuleNotFoundError: No module named 'pytz'
+127.0.0.1 - - [05/Nov/2026 00:16:48] "GET /api/stats/trends?days=1 HTTP/1.1" 500 -
+127.0.0.1 - - [05/Nov/2026 00:21:51] "GET /stats HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:21:51] "GET /static/style.css HTTP/1.1" 304 -
+127.0.0.1 - - [05/Nov/2026 00:21:51] "GET /api/db/stats HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:21:51] "GET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1" 404 -
+127.0.0.1 - - [05/Nov/2026 00:21:51] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:21:51] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:21:51] "GET /api/admin/users HTTP/1.1" 200 -
+Traceback (most recent call last):
+  File "C:\Users\haorab\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\haorab\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\lib\auth.py", line 204, in wrapper
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\app.py", line 1514, in api_stats
+    import pytz
+ModuleNotFoundError: No module named 'pytz'
+127.0.0.1 - - [05/Nov/2026 00:21:51] "GET /api/stats?range=today HTTP/1.1" 500 -
+Traceback (most recent call last):
+  File "C:\Users\haorab\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\haorab\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\lib\auth.py", line 204, in wrapper
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\app.py", line 1604, in api_stats_trends
+    trends = db.get_trends(c, days, user_id=target_user_id,
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\lib\db.py", line 1356, in get_trends
+    import pytz
+ModuleNotFoundError: No module named 'pytz'
+127.0.0.1 - - [05/Nov/2026 00:21:51] "GET /api/stats/trends?days=1 HTTP/1.1" 500 -
+127.0.0.1 - - [05/Nov/2026 00:21:53] "GET /stats HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:21:53] "GET /static/style.css HTTP/1.1" 304 -
+127.0.0.1 - - [05/Nov/2026 00:21:53] "GET /api/db/stats HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:21:53] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:21:53] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:21:53] "GET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1" 404 -
+127.0.0.1 - - [05/Nov/2026 00:21:53] "GET /api/admin/users HTTP/1.1" 200 -
+Traceback (most recent call last):
+  File "C:\Users\haorab\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\haorab\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\lib\auth.py", line 204, in wrapper
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\app.py", line 1514, in api_stats
+    import pytz
+ModuleNotFoundError: No module named 'pytz'
+127.0.0.1 - - [05/Nov/2026 00:21:53] "GET /api/stats?range=today HTTP/1.1" 500 -
+Traceback (most recent call last):
+  File "C:\Users\haorab\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\haorab\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\lib\auth.py", line 204, in wrapper
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\app.py", line 1604, in api_stats_trends
+    trends = db.get_trends(c, days, user_id=target_user_id,
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\lib\db.py", line 1356, in get_trends
+    import pytz
+ModuleNotFoundError: No module named 'pytz'
+127.0.0.1 - - [05/Nov/2026 00:21:53] "GET /api/stats/trends?days=1 HTTP/1.1" 500 -
+127.0.0.1 - - [05/Nov/2026 00:21:53] "GET /stats HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:21:53] "GET /static/style.css HTTP/1.1" 304 -
+127.0.0.1 - - [05/Nov/2026 00:21:53] "GET /api/db/stats HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:21:53] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:21:53] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:21:53] "GET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1" 404 -
+127.0.0.1 - - [05/Nov/2026 00:21:53] "GET /api/admin/users HTTP/1.1" 200 -
+Traceback (most recent call last):
+  File "C:\Users\haorab\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\haorab\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\lib\auth.py", line 204, in wrapper
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\app.py", line 1514, in api_stats
+    import pytz
+ModuleNotFoundError: No module named 'pytz'
+127.0.0.1 - - [05/Nov/2026 00:21:53] "GET /api/stats?range=today HTTP/1.1" 500 -
+Traceback (most recent call last):
+  File "C:\Users\haorab\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\haorab\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\lib\auth.py", line 204, in wrapper
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\app.py", line 1604, in api_stats_trends
+    trends = db.get_trends(c, days, user_id=target_user_id,
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\lib\db.py", line 1356, in get_trends
+    import pytz
+ModuleNotFoundError: No module named 'pytz'
+127.0.0.1 - - [05/Nov/2026 00:21:53] "GET /api/stats/trends?days=1 HTTP/1.1" 500 -
+127.0.0.1 - - [05/Nov/2026 00:21:53] "GET /stats HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:21:53] "GET /static/style.css HTTP/1.1" 304 -
+127.0.0.1 - - [05/Nov/2026 00:21:53] "GET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1" 404 -
+127.0.0.1 - - [05/Nov/2026 00:21:53] "GET /api/db/stats HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:21:53] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:21:53] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:21:53] "GET /api/admin/users HTTP/1.1" 200 -
+Traceback (most recent call last):
+  File "C:\Users\haorab\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\haorab\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\lib\auth.py", line 204, in wrapper
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\app.py", line 1514, in api_stats
+    import pytz
+ModuleNotFoundError: No module named 'pytz'
+127.0.0.1 - - [05/Nov/2026 00:21:53] "GET /api/stats?range=today HTTP/1.1" 500 -
+Traceback (most recent call last):
+  File "C:\Users\haorab\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\haorab\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\lib\auth.py", line 204, in wrapper
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\app.py", line 1604, in api_stats_trends
+    trends = db.get_trends(c, days, user_id=target_user_id,
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\lib\db.py", line 1356, in get_trends
+    import pytz
+ModuleNotFoundError: No module named 'pytz'
+127.0.0.1 - - [05/Nov/2026 00:21:53] "GET /api/stats/trends?days=1 HTTP/1.1" 500 -
+127.0.0.1 - - [05/Nov/2026 00:21:54] "GET /stats HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:21:54] "GET /static/style.css HTTP/1.1" 304 -
+127.0.0.1 - - [05/Nov/2026 00:21:54] "GET /api/db/stats HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:21:54] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:21:54] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:21:54] "GET /api/admin/users HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:21:54] "GET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1" 404 -
+Traceback (most recent call last):
+  File "C:\Users\haorab\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\haorab\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\lib\auth.py", line 204, in wrapper
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\app.py", line 1514, in api_stats
+    import pytz
+ModuleNotFoundError: No module named 'pytz'
+127.0.0.1 - - [05/Nov/2026 00:21:54] "GET /api/stats?range=today HTTP/1.1" 500 -
+Traceback (most recent call last):
+  File "C:\Users\haorab\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\haorab\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\lib\auth.py", line 204, in wrapper
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\app.py", line 1604, in api_stats_trends
+    trends = db.get_trends(c, days, user_id=target_user_id,
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\lib\db.py", line 1356, in get_trends
+    import pytz
+ModuleNotFoundError: No module named 'pytz'
+127.0.0.1 - - [05/Nov/2026 00:21:54] "GET /api/stats/trends?days=1 HTTP/1.1" 500 -
+127.0.0.1 - - [05/Nov/2026 00:21:54] "GET /stats HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:21:54] "GET /static/style.css HTTP/1.1" 304 -
+127.0.0.1 - - [05/Nov/2026 00:21:54] "GET /api/db/stats HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:21:54] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:21:54] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:21:54] "GET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1" 404 -
+127.0.0.1 - - [05/Nov/2026 00:21:54] "GET /api/admin/users HTTP/1.1" 200 -
+Traceback (most recent call last):
+  File "C:\Users\haorab\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\haorab\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\lib\auth.py", line 204, in wrapper
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\app.py", line 1514, in api_stats
+    import pytz
+ModuleNotFoundError: No module named 'pytz'
+127.0.0.1 - - [05/Nov/2026 00:21:54] "GET /api/stats?range=today HTTP/1.1" 500 -
+Traceback (most recent call last):
+  File "C:\Users\haorab\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\haorab\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\lib\auth.py", line 204, in wrapper
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\app.py", line 1604, in api_stats_trends
+    trends = db.get_trends(c, days, user_id=target_user_id,
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\phpstudy_pro\WWW\crm\lib\db.py", line 1356, in get_trends
+    import pytz
+ModuleNotFoundError: No module named 'pytz'
+127.0.0.1 - - [05/Nov/2026 00:21:54] "GET /api/stats/trends?days=1 HTTP/1.1" 500 -
