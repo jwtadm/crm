@@ -381,22 +381,13 @@ async function loadTrends() {
       // Pass custom date range so trend chart follows the selected period (RC-7b)
       url += `start=${customStart}&end=${customEnd}`;
     } else if (currentRange === 'today' || currentRange === 'yesterday') {
-      // For today/yesterday, pass the actual date range
-      const now = new Date();
-      let targetDate;
+      // For today/yesterday, use days=1 to get just that day
+      // The backend will calculate the correct date based on its timezone
+      url += `days=1`;
+      // Pass a hint for which day
       if (currentRange === 'yesterday') {
-        targetDate = new Date(now);
-        targetDate.setDate(targetDate.getDate() - 1);
-      } else {
-        targetDate = now;
+        url += `&offset=1`;  // Yesterday = 1 day offset from today
       }
-      // Use China timezone (UTC+8)
-      const chinaOffset = 8 * 60 * 60 * 1000;
-      const dayStart = new Date(targetDate);
-      dayStart.setHours(0, 0, 0, 0);
-      const startTs = Math.floor((dayStart.getTime() - chinaOffset) / 1000);
-      const endTs = startTs + 86400;
-      url += `start=${startTs}&end=${endTs}`;
     } else {
       // For week/month/all, use days parameter
       const presetDays = {all:90, week:7, month:30};

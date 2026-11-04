@@ -1344,11 +1344,14 @@ def get_daily_overview(c: sqlite3.Connection, start_ts: int, end_ts: int,
 def get_trends(c: sqlite3.Connection, days: int = 7,
                user_id: int | None = None,
                start_ts: int | None = None,
-               end_ts: int | None = None) -> list[dict]:
+               end_ts: int | None = None,
+               offset: int = 0) -> list[dict]:
     """Get daily trend data.
 
     By default covers the last ``days`` days.  When *start_ts* and *end_ts*
     are both given, iterates over that custom range instead (RC-7b).
+    When *offset* is given, shifts the start date back by that many days
+    (e.g., offset=1 means start from yesterday instead of today).
     All counting uses the same source as get_daily_overview so trend bars
     match the KPI cards.
     """
@@ -1380,6 +1383,9 @@ def get_trends(c: sqlite3.Connection, days: int = 7,
             day_dt = day_end
     else:
         now = datetime.datetime.now(china_tz)
+        # Apply offset: shift start date back by 'offset' days
+        if offset > 0:
+            now = now - datetime.timedelta(days=offset)
         day_list = []
         for i in range(days - 1, -1, -1):
             dt = now - datetime.timedelta(days=i)

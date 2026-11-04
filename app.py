@@ -1599,10 +1599,14 @@ def api_stats_trends():
     raw_end = args.get("end")
     custom_start = int(raw_start) if raw_start else None
     custom_end = int(raw_end) if raw_end else None
+    
+    # Support offset parameter for "yesterday" etc.
+    offset = int(args.get("offset") or 0)
 
     with db.tx() as c:
         trends = db.get_trends(c, days, user_id=target_user_id,
-                               start_ts=custom_start, end_ts=custom_end)
+                               start_ts=custom_start, end_ts=custom_end,
+                               offset=offset)
 
     return jsonify({"trends": trends, "days": days})
 
