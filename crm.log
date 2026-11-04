@@ -1153,3 +1153,140 @@ ModuleNotFoundError: No module named 'pytz'
 127.0.0.1 - - [05/Nov/2026 00:28:26] "GET /api/stats/trends?days=1 HTTP/1.1" 200 -
 127.0.0.1 - - [05/Nov/2026 00:28:27] "GET /api/stats/trends?days=1 HTTP/1.1" 200 -
 127.0.0.1 - - [05/Nov/2026 00:28:27] "GET /api/stats?range=yesterday HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:29:57] "GET /stats HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:29:57] "GET /static/style.css HTTP/1.1" 304 -
+127.0.0.1 - - [05/Nov/2026 00:29:57] "GET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1" 404 -
+127.0.0.1 - - [05/Nov/2026 00:29:57] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:29:57] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:29:57] "GET /api/db/stats HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:29:57] "GET /api/admin/users HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:29:58] "GET /api/stats?range=today HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:29:58] "GET /stats HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:29:58] "GET /api/stats/trends?start=1793779200&end=1793865600 HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:29:58] "GET /static/style.css HTTP/1.1" 304 -
+127.0.0.1 - - [05/Nov/2026 00:29:58] "GET /api/db/stats HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:29:58] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:29:58] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:29:58] "GET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1" 404 -
+127.0.0.1 - - [05/Nov/2026 00:29:58] "GET /api/admin/users HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:29:58] "GET /stats HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:29:58] "GET /static/style.css HTTP/1.1" 304 -
+127.0.0.1 - - [05/Nov/2026 00:29:58] "GET /api/db/stats HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:29:58] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:29:58] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:29:58] "GET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1" 404 -
+127.0.0.1 - - [05/Nov/2026 00:29:58] "GET /api/admin/users HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:29:58] "GET /stats HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:29:58] "GET /static/style.css HTTP/1.1" 304 -
+127.0.0.1 - - [05/Nov/2026 00:29:58] "GET /api/db/stats HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:29:58] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:29:58] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:29:58] "GET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1" 404 -
+127.0.0.1 - - [05/Nov/2026 00:29:58] "GET /api/admin/users HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:29:59] "GET /stats HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:29:59] "GET /static/style.css HTTP/1.1" 304 -
+127.0.0.1 - - [05/Nov/2026 00:29:59] "GET /api/db/stats HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:29:59] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:29:59] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:29:59] "GET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1" 404 -
+127.0.0.1 - - [05/Nov/2026 00:29:59] "GET /api/admin/users HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:29:59] "GET /stats HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:29:59] "GET /static/style.css HTTP/1.1" 304 -
+127.0.0.1 - - [05/Nov/2026 00:29:59] "GET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1" 404 -
+127.0.0.1 - - [05/Nov/2026 00:29:59] "GET /api/db/stats HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:29:59] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:29:59] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:29:59] "GET /api/admin/users HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:29:59] "GET /stats HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:29:59] "GET /static/style.css HTTP/1.1" 304 -
+127.0.0.1 - - [05/Nov/2026 00:29:59] "GET /api/stats?range=today HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:29:59] "GET /api/db/stats HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:29:59] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:29:59] "GET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1" 404 -
+127.0.0.1 - - [05/Nov/2026 00:29:59] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:29:59] "GET /api/admin/users HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:29:59] "GET /api/stats?range=today HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:29:59] "GET /api/stats?range=today HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:29:59] "GET /api/stats?range=today HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:30:00] "GET /api/stats?range=today HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:30:00] "GET /api/stats?range=today HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:30:00] "GET /api/stats/trends?start=1793779200&end=1793865600 HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:30:03] "GET /api/stats/trends?start=1793692800&end=1793779200 HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:30:04] "GET /api/stats?range=yesterday HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:30:04] "GET /api/stats/trends?start=1793779200&end=1793865600 HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:30:05] "GET /api/stats?range=today HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:30:05] "GET /api/stats/trends?start=1793692800&end=1793779200 HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:30:05] "GET /api/stats?range=yesterday HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:30:06] "GET /api/stats/trends?start=1793779200&end=1793865600 HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:30:06] "GET /api/stats?range=today HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:30:06] "GET /api/stats/trends?start=1793692800&end=1793779200 HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:30:07] "GET /api/stats?range=yesterday HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:30:12] "GET /api/stats/trends?start=1793779200&end=1793865600 HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:30:12] "GET /api/stats?range=today HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:30:16] "GET /stats HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:30:16] "GET /static/style.css HTTP/1.1" 304 -
+127.0.0.1 - - [05/Nov/2026 00:30:16] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:30:16] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:30:16] "GET /api/db/stats HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:30:16] "GET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1" 404 -
+127.0.0.1 - - [05/Nov/2026 00:30:16] "GET /api/admin/users HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:30:16] "GET /api/stats?range=today HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:30:16] "GET /api/stats/trends?start=1793779200&end=1793865600 HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:30:16] "GET /stats HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:30:16] "GET /static/style.css HTTP/1.1" 304 -
+127.0.0.1 - - [05/Nov/2026 00:30:16] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:30:16] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:30:16] "GET /api/db/stats HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:30:16] "GET /api/admin/users HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:30:16] "GET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1" 404 -
+127.0.0.1 - - [05/Nov/2026 00:30:17] "GET /api/stats?range=today HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:30:17] "GET /api/stats/trends?start=1793779200&end=1793865600 HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:30:22] "GET /api/stats/trends?start=1793692800&end=1793779200 HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:30:23] "GET /api/stats?range=yesterday HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:32:01] "GET /stats HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:32:01] "GET /static/style.css HTTP/1.1" 304 -
+127.0.0.1 - - [05/Nov/2026 00:32:01] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:32:01] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:32:01] "GET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1" 404 -
+127.0.0.1 - - [05/Nov/2026 00:32:01] "GET /api/db/stats HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:32:01] "GET /api/admin/users HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:32:02] "GET /api/stats?range=today HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:32:02] "GET /api/stats/trends?days=1 HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:32:04] "GET /api/stats/trends?days=1&offset=1 HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:32:05] "GET /api/stats?range=yesterday HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:32:06] "GET /api/stats/trends?days=1 HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:32:07] "GET /api/stats?range=today HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:32:07] "GET /api/stats/trends?days=90 HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:32:07] "GET /api/stats?range=all HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:32:08] "GET /api/stats/trends?days=1 HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:32:09] "GET /api/stats?range=today HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:32:09] "GET /api/stats/trends?days=1&offset=1 HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:32:10] "GET /api/stats?range=yesterday HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:32:11] "GET /api/stats/trends?days=7 HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:32:11] "GET /api/stats?range=week HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:32:14] "GET /api/stats/trends?days=30 HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:32:15] "GET /api/stats?range=month HTTP/1.1" 200 -
+ * Detected change in 'D:\\phpstudy_pro\\WWW\\crm\\lib\\db.py', reloading
+ * Restarting with stat
+[watchdog] started (tick every 60s, stale threshold 300s)
+ * Debugger is active!
+ * Debugger PIN: 917-343-103
+ * Detected change in 'D:\\phpstudy_pro\\WWW\\crm\\lib\\db.py', reloading
+ * Restarting with stat
+[watchdog] started (tick every 60s, stale threshold 300s)
+ * Debugger is active!
+ * Debugger PIN: 917-343-103
+ * Detected change in 'D:\\phpstudy_pro\\WWW\\crm\\app.py', reloading
+ * Restarting with stat
+[watchdog] started (tick every 60s, stale threshold 300s)
+ * Debugger is active!
+ * Debugger PIN: 917-343-103
+127.0.0.1 - - [05/Nov/2026 00:36:09] "GET /stats HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:36:10] "GET /static/style.css HTTP/1.1" 304 -
+127.0.0.1 - - [05/Nov/2026 00:36:10] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:36:10] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:36:10] "GET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1" 404 -
+127.0.0.1 - - [05/Nov/2026 00:36:10] "GET /api/admin/users HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:36:10] "GET /api/db/stats HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:36:10] "GET /api/stats?range=today HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 00:36:10] "GET /api/stats/trends?start=1793808000&end=1793896570 HTTP/1.1" 200 -
