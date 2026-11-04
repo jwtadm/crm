@@ -377,23 +377,58 @@ async function loadStats() {
 async function loadTrends() {
   try {
     let url = '/api/stats/trends?';
+    
+    // Calculate start/end based on currentRange (using China timezone)
+    const now = new Date();
+    const chinaOffset = 8 * 60 * 60; // UTC+8 in seconds
+    let startTs, endTs;
+    
     if (customStart && customEnd) {
-      // Pass custom date range so trend chart follows the selected period (RC-7b)
-      url += `start=${customStart}&end=${customEnd}`;
-    } else if (currentRange === 'today' || currentRange === 'yesterday') {
-      // For today/yesterday, use days=1 to get just that day
-      // The backend will calculate the correct date based on its timezone
-      url += `days=1`;
-      // Pass a hint for which day
-      if (currentRange === 'yesterday') {
-        url += `&offset=1`;  // Yesterday = 1 day offset from today
-      }
+      // Custom date range
+      startTs = customStart;
+      endTs = customEnd;
+    } else if (currentRange === 'today') {
+      // Today: start of today to now
+      const today = new Date(now);
+      today.setHours(0, 0, 0, 0);
+      startTs = Math.floor(today.getTime() / 1000);
+      endTs = Math.floor(now.getTime() / 1000) + 86400;
+    } else if (currentRange === 'yesterday') {
+      // Yesterday: start of yesterday to end of yesterday
+      const yesterday = new Date(now);
+      yesterday.setDate(yesterday.getDate() - 1);
+      yesterday.setHours(0, 0, 0, 0);
+      startTs = Math.floor(yesterday.getTime() / 1000);
+      endTs = startTs + 86400;
+    } else if (currentRange === 'week') {
+      // This week: from Monday to now
+      const weekStart = new Date(now);
+      weekStart.setDate(weekStart.getDate() - weekStart.getDay() + 1); // Monday
+      weekStart.setHours(0, 0, 0, 0);
+      startTs = Math.floor(weekStart.getTime() / 1000);
+      endTs = Math.floor(now.getTime() / 1000) + 86400;
+    } else if (currentRange === 'month') {
+      // This month: from 1st to now
+      const monthStart = new Date(now);
+      monthStart.setDate(1);
+      monthStart.setHours(0, 0, 0, 0);
+      startTs = Math.floor(monthStart.getTime() / 1000);
+      endTs = Math.floor(now.getTime() / 1000) + 86400;
+    } else if (currentRange === 'all') {
+      // All time: last 90 days
+      const daysAgo = new Date(now);
+      daysAgo.setDate(daysAgo.getDate() - 90);
+      daysAgo.setHours(0, 0, 0, 0);
+      startTs = Math.floor(daysAgo.getTime() / 1000);
+      endTs = Math.floor(now.getTime() / 1000) + 86400;
     } else {
-      // For week/month/all, use days parameter
-      const presetDays = {all:90, week:7, month:30};
-      const d = presetDays[currentRange] || 7;
-      url += `days=${d}`;
+      // Default: last 7 days
+      startTs = Math.floor(now.getTime() / 1000) - 7 * 86400;
+      endTs = Math.floor(now.getTime() / 1000) + 86400;
     }
+    
+    url += `start=${startTs}&end=${endTs}`;
+    
     const uid = document.getElementById('userFilter')?.value;
     if (uid && uid !== 'all') url += `&user_id=${uid}`;
     const r = await fetch(url);
