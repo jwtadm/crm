@@ -1108,7 +1108,7 @@ def get_daily_overview(c: sqlite3.Connection, start_ts: int, end_ts: int,
         f"""SELECT assigned_user_id, COUNT(*) AS n FROM people
            WHERE created_at >= ? AND created_at < ? {user_filter}
            GROUP BY assigned_user_id""",
-        (start_ts, end_ts) + user_param,
+        [start_ts, end_ts] + user_param,
     ).fetchall():
         u_new_map[r["assigned_user_id"]] = r["n"]
 
@@ -1121,7 +1121,7 @@ def get_daily_overview(c: sqlite3.Connection, start_ts: int, end_ts: int,
            WHERE se.new_status = '已联系' AND se.created_at >= ? AND se.created_at < ?
            {user_filter}
            GROUP BY p.assigned_user_id""",
-        (start_ts, end_ts) + user_param,
+        [start_ts, end_ts] + user_param,
     ).fetchall():
         u_contacted_map[r["assigned_user_id"]] = r["n"]
 
@@ -1131,7 +1131,7 @@ def get_daily_overview(c: sqlite3.Connection, start_ts: int, end_ts: int,
            JOIN people p ON p.id = el.person_id
            WHERE el.sent_at >= ? AND el.sent_at < ? {user_filter}
            GROUP BY p.assigned_user_id""",
-        (start_ts, end_ts) + user_param,
+        [start_ts, end_ts] + user_param,
     ).fetchall():
         u_emails_map[r["assigned_user_id"]] = r["n"]
 
@@ -1141,7 +1141,7 @@ def get_daily_overview(c: sqlite3.Connection, start_ts: int, end_ts: int,
            JOIN people p ON p.id = f.person_id
            WHERE f.created_at >= ? AND f.created_at < ? {user_filter}
            GROUP BY p.assigned_user_id""",
-        (start_ts, end_ts) + user_param,
+        [start_ts, end_ts] + user_param,
     ).fetchall():
         u_followups_map[r["assigned_user_id"]] = r["n"]
 
@@ -1156,7 +1156,7 @@ def get_daily_overview(c: sqlite3.Connection, start_ts: int, end_ts: int,
            AND se.new_status IN ('已联系','已回复','已成交','不适合')
            {user_filter}
            GROUP BY p.assigned_user_id, se.new_status""",
-        (start_ts, end_ts) + user_param,
+        [start_ts, end_ts] + user_param,
     ).fetchall():
         u_status_map[(r["assigned_user_id"], r["new_status"])] = r["n"]
 
