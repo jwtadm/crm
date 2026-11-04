@@ -502,3 +502,34 @@ TypeError: can only concatenate tuple (not "list") to tuple
 [watchdog] started (tick every 60s, stale threshold 300s)
  * Debugger is active!
  * Debugger PIN: 917-343-103
+127.0.0.1 - - [04/Nov/2026 23:23:33] "GET /stats HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:23:33] "GET /static/style.css HTTP/1.1" 304 -
+127.0.0.1 - - [04/Nov/2026 23:23:33] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:23:33] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:23:33] "GET /api/db/stats HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:23:33] "GET /api/admin/users HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:23:33] "GET /api/stats?range=today HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:23:33] "GET /api/stats/trends?days=1 HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:23:35] "GET /api/stats?range=today&user_id=11 HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:23:37] "GET /api/stats/trends?days=90&user_id=11 HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:23:37] "GET /api/stats?range=all&user_id=11 HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:23:40] "GET /stats HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:23:40] "GET /static/style.css HTTP/1.1" 304 -
+127.0.0.1 - - [04/Nov/2026 23:23:40] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:23:41] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:23:41] "GET /api/db/stats HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:23:41] "GET /api/admin/users HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:23:41] "GET /api/stats?range=today HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:23:41] "GET /api/stats/trends?days=1 HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:23:44] "GET /api/stats/trends?days=90 HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:23:45] "GET /api/stats?range=all HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:32:20] "GET /stats HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:32:20] "GET /static/style.css HTTP/1.1" 304 -
+127.0.0.1 - - [04/Nov/2026 23:32:20] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:32:20] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:32:20] "GET /api/db/stats HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:32:20] "GET /api/admin/users HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:32:20] "GET /api/stats?range=today HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:32:20] "GET /api/stats/trends?days=1 HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:32:22] "GET /api/stats/trends?days=90 HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:32:23] "GET /api/stats?range=all HTTP/1.1" 200 -
