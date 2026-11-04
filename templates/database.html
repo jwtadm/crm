@@ -37,7 +37,8 @@
 
 {% block scripts %}
 <script>
-const STATUS_LABEL = {lead: '潜在客户', contacted: '已联系', replied: '已回复', qualified: '已确认', dropped: '已放弃'};
+const STATUS_LABEL = {'待联系': '待联系', '已联系': '已联系', '已回复': '已回复', '已成交': '已成交', '主动来找': '主动来找', '不适合': '不适合', '已放弃': '已放弃'};
+const STATUS_LIST = ['待联系', '已联系', '已回复', '已成交', '主动来找', '不适合', '已放弃'];
 let _t = null;
 function debouncedLoad() { clearTimeout(_t); _t = setTimeout(loadList, 300); }
 
@@ -97,7 +98,7 @@ async function openDrawer(accountId) {
         <div style="margin-bottom:8px;"><span style="color:var(--text2);">邮箱：</span> ${escapeHtml(p.email || '（无 — 按平台 ID 标识）')}</div>
         <div style="margin-bottom:8px;"><span style="color:var(--text2);">状态：</span>
           <select id="crmStatus" style="padding:5px 8px; background: var(--surface); border:1px solid var(--border); color:var(--text); border-radius:6px; font-size:12px;">
-            ${['lead','contacted','replied','qualified','dropped'].map(s => `<option value="${s}" ${s===p.status?'selected':''}>${STATUS_LABEL[s]}</option>`).join('')}
+            ${STATUS_LIST.map(s => `<option value="${s}" ${s===p.status?'selected':''}>${STATUS_LABEL[s]}</option>`).join('')}
           </select>
         </div>
         <div style="margin-bottom:8px;"><span style="color:var(--text2);">标签：</span>

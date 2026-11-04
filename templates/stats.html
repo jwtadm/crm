@@ -331,8 +331,10 @@ function onCustomDate() {
   const e = document.getElementById('endDate').value;
   if (s && e) {
     document.querySelectorAll('.range-btns .btn[data-range]').forEach(b => b.classList.remove('active'));
-    customStart = Math.floor(new Date(s).getTime() / 1000);
-    customEnd = Math.floor(new Date(e).getTime() / 1000) + 86400;
+    // Parse as local time: append 'T00:00:00' so Safari/Chrome treat it as
+    // local midnight, not UTC (which shifts +8h in UTC+8) (RC-7).
+    customStart = Math.floor(new Date(s + 'T00:00:00').getTime() / 1000);
+    customEnd = Math.floor(new Date(e + 'T00:00:00').getTime() / 1000) + 86400;
     loadStats();
   }
 }
@@ -385,7 +387,16 @@ async function loadStats() {
 
 async function loadTrends() {
   try {
-    let url = '/api/stats/trends?days=7';
+    let url = '/api/stats/trends?';
+    if (customStart && customEnd) {
+      // Pass custom date range so trend chart follows the selected period (RC-7b)
+      url += `start=${customStart}&end=${customEnd}`;
+    } else {
+      // Match trend days to the preset range
+      const presetDays = {today:1, yesterday:1, week:7, month:30};
+      const d = presetDays[currentRange] || 7;
+      url += `days=${d}`;
+    }
     const uid = document.getElementById('userFilter')?.value;
     if (uid && uid !== 'all') url += `&user_id=${uid}`;
     const r = await fetch(url);

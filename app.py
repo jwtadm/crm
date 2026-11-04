@@ -1532,12 +1532,16 @@ def api_stats():
             start_ts = int(day_start.timestamp())
             end_ts = start_ts + 86400
         elif range_preset == "week":
+            # "本周" = this week starting Monday (RC-7)
             day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-            start_ts = int(day_start.timestamp()) - 6 * 86400
+            monday = day_start - datetime.timedelta(days=day_start.weekday())
+            start_ts = int(monday.timestamp())
             end_ts = int(day_start.timestamp()) + 86400
         elif range_preset == "month":
+            # "本月" = first of this month (RC-7)
             day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-            start_ts = int(day_start.timestamp()) - 29 * 86400
+            first_of_month = day_start.replace(day=1)
+            start_ts = int(first_of_month.timestamp())
             end_ts = int(day_start.timestamp()) + 86400
         else:
             day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -1567,6 +1571,7 @@ def api_stats_trends():
 
     Query params:
       days: number of days to look back (default 7, max 90)
+      start/end: custom unix timestamps (override days)
       user_id: filter to specific user (admin only)
     """
     u = auth.current_user()
@@ -1581,8 +1586,15 @@ def api_stats_trends():
         if raw_uid and raw_uid != "all":
             target_user_id = int(raw_uid)
 
+    # Support custom date range from frontend (RC-7b)
+    raw_start = args.get("start")
+    raw_end = args.get("end")
+    custom_start = int(raw_start) if raw_start else None
+    custom_end = int(raw_end) if raw_end else None
+
     with db.tx() as c:
-        trends = db.get_trends(c, days, user_id=target_user_id)
+        trends = db.get_trends(c, days, user_id=target_user_id,
+                               start_ts=custom_start, end_ts=custom_end)
 
     return jsonify({"trends": trends, "days": days})
 
@@ -1719,6 +1731,15 @@ def api_db_update_person(person_id: int):
         # Record status change event if status was updated
         if "status" in payload and old_status and old_status != payload["status"]:
             db.record_status_event(c, person_id, u["id"], old_status, payload["status"])
+            # Also update last_contacted_at so the KPI "联系人数" (which reads
+            # last_contacted_at for trend charts) stays consistent with the
+            # status_events-based summary.  Any status change implies contact
+            # happened — without this, changing status via the dropdown updates
+            # the pipeline but NOT last_contacted_at, creating a permanent
+            # mismatch between the three data surfaces (RC-2).
+            import time as _time
+            c.execute("UPDATE people SET last_contacted_at=? WHERE id=?",
+                      (int(_time.time()), person_id))
         person = db.get_person(c, person_id)
     if u["role"] == "admin" and "assigned_user_id" in payload:
         audit.log(u["id"], "person.assign", f"person:{person_id}",
