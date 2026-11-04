@@ -111,18 +111,31 @@
 
 /* Trend chart (CSS bars) */
 .trend-chart {
-  display: flex; align-items: flex-end; gap: 6px; height: 160px; padding-top: 10px;
+  display: flex; align-items: flex-end; gap: 4px; height: 160px; padding-top: 10px;
   border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.trend-chart::-webkit-scrollbar {
+  height: 6px;
+}
+.trend-chart::-webkit-scrollbar-track {
+  background: transparent;
+}
+.trend-chart::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
 }
 .trend-col {
-  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px;
+  min-width: 28px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 4px;
 }
-.trend-bars { display: flex; gap: 2px; align-items: flex-end; width: 100%; justify-content: center; }
+.trend-bars { display: flex; gap: 2px; align-items: flex-end; justify-content: center; }
 .trend-bar {
-  width: 10px; border-radius: 3px 3px 0 0; transition: height .3s ease; min-height: 2px;
+  width: 8px; border-radius: 2px 2px 0 0; transition: height .3s ease; min-height: 2px;
 }
-.trend-label { font-size: .7rem; color: var(--text-3); margin-top: 4px; }
-.trend-value { font-size: .65rem; color: var(--text-3); text-align: center; }
+.trend-label { font-size: .65rem; color: var(--text-3); margin-top: 4px; white-space: nowrap; }
+.trend-value { font-size: .6rem; color: var(--text-3); text-align: center; }
 
 /* Legend */
 .legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 10px; justify-content: center; }
@@ -202,7 +215,7 @@
 
 <!-- ─── Trend Chart ───────────────────────────────────────── -->
 <div class="stats-section">
-  <h2>📈 趋势图 <span class="badge">近7天</span></h2>
+  <h2>📈 趋势图 <span class="badge" id="trendBadge">近7天</span></h2>
   <div class="trend-chart" id="trendChart"></div>
   <div class="legend">
     <div class="legend-item"><div class="legend-dot" style="background:var(--blue)"></div>新增</div>
@@ -216,12 +229,12 @@
 
 <!-- ─── Per-User Table ────────────────────────────────────── -->
 <div class="stats-section admin-only hidden" id="perUserSection">
-  <h2>👥 员工明细</h2>
+  <h2>👥 员工明细 <span class="badge" style="font-size:.7rem;font-weight:normal;color:var(--text-3);">负责客户为全量数据，其余列按所选时间统计</span></h2>
   <div style="overflow-x:auto">
     <table class="stats-table" id="userTable">
       <thead>
         <tr>
-          <th>员工</th><th class="num">负责客户</th><th class="num">新增</th>
+          <th>员工</th><th class="num" title="当前分配给该员工的客户总数（不受时间筛选影响）">负责客户</th><th class="num">新增</th>
           <th class="num">联系</th><th class="num">发信</th><th class="num">跟进</th>
           <th class="num">→已联系</th><th class="num">→已回复</th><th class="num">→已成交</th>
           <th class="num">→不适合</th>
@@ -557,6 +570,16 @@ function renderRejections(data) {
 function renderTrendChart(trends) {
   const container = document.getElementById('trendChart');
   if (!trends || !trends.length) { container.innerHTML = '<div class="stats-empty">暂无趋势数据</div>'; return; }
+
+  // Update badge text based on actual days shown
+  const badge = document.getElementById('trendBadge');
+  if (badge) {
+    const days = trends.length;
+    if (days === 1) badge.textContent = '今天';
+    else if (days <= 7) badge.textContent = `近${days}天`;
+    else if (days <= 30) badge.textContent = `近${days}天`;
+    else badge.textContent = `近${days}天`;
+  }
 
   const maxVal = Math.max(...trends.flatMap(t => [t.new_customers, t.contacted, t.emails_sent, t.replies, t.deals, t.rejected]), 1);
   const barH = v => Math.max((v / maxVal) * 130, 2);

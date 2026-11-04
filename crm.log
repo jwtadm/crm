@@ -487,3 +487,18 @@ TypeError: can only concatenate tuple (not "list") to tuple
 [watchdog] started (tick every 60s, stale threshold 300s)
  * Debugger is active!
  * Debugger PIN: 917-343-103
+127.0.0.1 - - [04/Nov/2026 23:18:21] "GET /stats HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:18:21] "GET /static/style.css HTTP/1.1" 304 -
+127.0.0.1 - - [04/Nov/2026 23:18:21] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:18:21] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:18:21] "GET /api/db/stats HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:18:21] "GET /api/admin/users HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:18:21] "GET /api/stats?range=today HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:18:21] "GET /api/stats/trends?days=1 HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:18:34] "GET /api/stats/trends?days=90 HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:18:34] "GET /api/stats?range=all HTTP/1.1" 200 -
+ * Detected change in 'D:\\phpstudy_pro\\WWW\\crm\\lib\\db.py', reloading
+ * Restarting with stat
+[watchdog] started (tick every 60s, stale threshold 300s)
+ * Debugger is active!
+ * Debugger PIN: 917-343-103

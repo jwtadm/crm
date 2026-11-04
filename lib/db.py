@@ -1161,9 +1161,10 @@ def get_daily_overview(c: sqlite3.Connection, start_ts: int, end_ts: int,
         u_status_map[(r["assigned_user_id"], r["new_status"])] = r["n"]
 
     u_total_map = {}
+    # "负责客户" 始终统计全量（不受时间范围影响），因为这是员工当前负责的客户总数
     for r in c.execute(
-        f"SELECT assigned_user_id, COUNT(*) AS n FROM people WHERE created_at >= ? AND created_at < ? {user_filter} GROUP BY assigned_user_id",
-        [start_ts, end_ts] + user_param,
+        f"SELECT assigned_user_id, COUNT(*) AS n FROM people WHERE 1=1 {user_filter} GROUP BY assigned_user_id",
+        user_param,
     ).fetchall():
         u_total_map[r["assigned_user_id"]] = r["n"]
 
