@@ -1522,7 +1522,11 @@ def api_stats():
         start_ts = int(args["start"])
         end_ts = int(args["end"])
     else:
-        if range_preset == "today":
+        if range_preset == "all":
+            # All time - from beginning to now
+            start_ts = 0
+            end_ts = int(now.timestamp()) + 86400
+        elif range_preset == "today":
             day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
             start_ts = int(day_start.timestamp())
             end_ts = start_ts + 86400

@@ -453,3 +453,37 @@ TypeError: can only concatenate tuple (not "list") to tuple
 127.0.0.1 - - [04/Nov/2026 22:49:57] "GET /api/admin/users HTTP/1.1" 200 -
 127.0.0.1 - - [04/Nov/2026 22:49:57] "GET /api/stats?range=today HTTP/1.1" 200 -
 127.0.0.1 - - [04/Nov/2026 22:49:57] "GET /api/stats/trends?days=1 HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 22:50:52] "GET /api/stats/trends?days=30 HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 22:50:52] "GET /api/stats?range=month HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 22:50:54] "GET /api/stats/trends?days=1 HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 22:50:55] "GET /api/stats?range=today HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:03:51] "GET /api/stats?range=today&user_id=11 HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:04:15] "GET /api/stats?range=today HTTP/1.1" 401 -
+127.0.0.1 - - [04/Nov/2026 23:04:37] "GET /api/stats?start=1725120000&end=1793808000&user_id=11 HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:05:01] "GET /api/stats?start=1725120000&end=1793721600&user_id=11 HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:05:07] "GET /api/stats?start=1725120000&end=1793808000&user_id=11 HTTP/1.1" 200 -
+[slow] GET /api/stats?start=1725120000&end=1793808000 1.65s status=200
+127.0.0.1 - - [04/Nov/2026 23:05:37] "GET /api/stats?start=1725120000&end=1793808000 HTTP/1.1" 200 -
+ * Detected change in 'D:\\phpstudy_pro\\WWW\\crm\\app.py', reloading
+ * Restarting with stat
+[watchdog] started (tick every 60s, stale threshold 300s)
+ * Debugger is active!
+ * Debugger PIN: 917-343-103
+127.0.0.1 - - [04/Nov/2026 23:14:13] "GET /stats HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:14:13] "GET /static/style.css HTTP/1.1" 304 -
+127.0.0.1 - - [04/Nov/2026 23:14:13] "GET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1" 404 -
+127.0.0.1 - - [04/Nov/2026 23:14:13] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:14:13] "GET /api/db/stats HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:14:13] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:14:13] "GET /api/admin/users HTTP/1.1" 200 -
+[slow] GET /api/stats?range=today 2.08s status=200
+127.0.0.1 - - [04/Nov/2026 23:14:15] "GET /api/stats?range=today HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:14:15] "GET /api/stats/trends?days=1 HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:14:17] "GET /api/stats?range=today&user_id=11 HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:14:20] "GET /api/stats/trends?days=90&user_id=11 HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2026 23:14:20] "GET /api/stats?range=all&user_id=11 HTTP/1.1" 200 -
+ * Detected change in 'D:\\phpstudy_pro\\WWW\\crm\\lib\\db.py', reloading
+ * Restarting with stat
+[watchdog] started (tick every 60s, stale threshold 300s)
+ * Debugger is active!
+ * Debugger PIN: 917-343-103

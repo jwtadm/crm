@@ -170,6 +170,7 @@
       </select>
     </div>
     <div class="range-btns">
+      <button class="btn btn-ghost" data-range="all">全部</button>
       <button class="btn btn-ghost active" data-range="today">今天</button>
       <button class="btn btn-ghost" data-range="yesterday">昨天</button>
       <button class="btn btn-ghost" data-range="week">本周</button>
@@ -393,7 +394,7 @@ async function loadTrends() {
       url += `start=${customStart}&end=${customEnd}`;
     } else {
       // Match trend days to the preset range
-      const presetDays = {today:1, yesterday:1, week:7, month:30};
+      const presetDays = {all:90, today:1, yesterday:1, week:7, month:30};
       const d = presetDays[currentRange] || 7;
       url += `days=${d}`;
     }
@@ -410,10 +411,10 @@ function renderDateDisplay(range) {
   const s = new Date(range.start * 1000);
   const e = new Date((range.end - 1) * 1000);
   const fmt = d => `${d.getMonth()+1}月${d.getDate()}日`;
-  const labels = {today:'今天', yesterday:'昨天', week:'本周', month:'本月'};
+  const labels = {all:'全部', today:'今天', yesterday:'昨天', week:'本周', month:'本月'};
   const label = labels[range.preset] || '自定义';
   let text = label;
-  if (range.preset !== 'today') text += ` (${fmt(s)} - ${fmt(e)})`;
+  if (range.preset !== 'today' && range.preset !== 'all') text += ` (${fmt(s)} - ${fmt(e)})`;
   document.getElementById('dateDisplay').textContent = text;
 }
 

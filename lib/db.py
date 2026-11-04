@@ -1162,8 +1162,8 @@ def get_daily_overview(c: sqlite3.Connection, start_ts: int, end_ts: int,
 
     u_total_map = {}
     for r in c.execute(
-        f"SELECT assigned_user_id, COUNT(*) AS n FROM people WHERE 1=1 {user_filter} GROUP BY assigned_user_id",
-        user_param,
+        f"SELECT assigned_user_id, COUNT(*) AS n FROM people WHERE created_at >= ? AND created_at < ? {user_filter} GROUP BY assigned_user_id",
+        [start_ts, end_ts] + user_param,
     ).fetchall():
         u_total_map[r["assigned_user_id"]] = r["n"]
 
