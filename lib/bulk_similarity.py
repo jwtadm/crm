@@ -172,13 +172,16 @@ def save_job(job: dict, created_by: int, *, update_status: bool = True) -> None:
         else:
             # Periodic checkpoint: update payload + finished_at only.
             # Never overwrite the status column (cancel endpoint owns it).
+            # Note: there is deliberately no last_checkpoint_at column — the
+            # watchdog reads that stamp out of payload_json. Writing it as a
+            # column used to raise "no such column" here, which the worker's
+            # except-handler turned into a failed job after the first batch.
             c.execute(
                 """UPDATE similarity_jobs
-                   SET payload_json=?, finished_at=?, last_checkpoint_at=?
+                   SET payload_json=?, finished_at=?
                    WHERE id=?""",
                 (_json.dumps(job, ensure_ascii=False),
                  int(job["finished_at"]) if job.get("finished_at") else None,
-                 job["last_checkpoint_at"],
                  job["id"]),
             )
         # If the DB status is 'cancelled' (set by the cancel endpoint),

@@ -144,14 +144,17 @@ def save_job(job: dict, created_by: int, *, update_status: bool = True) -> None:
                  job["status"], _json.dumps(job, ensure_ascii=False)),
             )
         else:
-            # Periodic checkpoint: don't overwrite status column
+            # Periodic checkpoint: don't overwrite status column.
+            # No last_checkpoint_at column exists — the watchdog reads that
+            # stamp from payload_json. The old UPDATE wrote it and raised
+            # "no such column", which surfaced as a failed job after the
+            # first batch.
             c.execute(
                 """UPDATE hydrate_jobs
-                   SET payload_json=?, finished_at=?, last_checkpoint_at=?
+                   SET payload_json=?, finished_at=?
                    WHERE id=?""",
                 (_json.dumps(job, ensure_ascii=False),
                  int(job["finished_at"]) if job.get("finished_at") else None,
-                 job["last_checkpoint_at"],
                  job["id"]),
             )
         # Sync back cancelled status from DB if set externally
