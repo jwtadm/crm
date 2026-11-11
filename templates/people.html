@@ -124,8 +124,10 @@
       </select>
     </label>
   </div>
-  <div id="tableWrap" style="margin-top: 12px;"><div class="empty">加载中…</div></div>
-  <div id="loadMoreSentinel" class="load-more" style="display:none;"></div>
+  <div id="tableWrap" class="table-box" style="margin-top: 12px;">
+    <div id="peopleList"><div class="empty">加载中…</div></div>
+    <div id="loadMoreSentinel" class="load-more" style="display:none;"></div>
+  </div>
 </div>
 
 <!-- Add-customer modal -->
@@ -352,7 +354,7 @@ async function loadList() {
   const prevScrollTop = wrap ? wrap.scrollTop : 0;
   const prevWindowY = window.scrollY;
 
-  document.getElementById('tableWrap').innerHTML = skeletonTable(13, 8, [32,140,200,200,80,110,110,130,140,90,90,200,168]);
+  document.getElementById('peopleList').innerHTML = skeletonTable(13, 8, [32,140,200,200,80,110,110,130,140,90,90,200,168]);
   try {
     const r = await fetch('/api/people/list?' + params.toString());
     const d = await r.json();
@@ -385,7 +387,7 @@ async function loadList() {
     });
   } catch (e) {
     if (seq !== _listSeq) return;   // aborted or superseded — don't clobber the UI
-    document.getElementById('tableWrap').innerHTML = `<div class="error-msg">${escapeHtml(e.message)}</div>`;
+    document.getElementById('peopleList').innerHTML = `<div class="error-msg">${escapeHtml(e.message)}</div>`;
   }
 }
 
@@ -402,14 +404,15 @@ function updateMeta() {
   maybeFillList();
 }
 
-// The observer only fires when the sentinel *enters* the margin. If it was
-// already inside while the first batch was loading, nothing re-triggers it and
-// the list looks stuck — top up until it is actually below the fold.
+// The observer only reports *changes*; a sentinel already inside the margin
+// during the first load never fires again. Top up until it is below the box.
+// The table scrolls inside #tableWrap, so "below the fold" means below the box.
 function maybeFillList() {
   if (_loadingMore || _offset <= 0 || _offset >= _total) return;
+  const box = document.getElementById('tableWrap');
   const el = document.getElementById('loadMoreSentinel');
-  if (!el || el.style.display === 'none') return;
-  if (el.getBoundingClientRect().top <= window.innerHeight + 320) loadMore();
+  if (!box || !el || el.style.display === 'none') return;
+  if (el.getBoundingClientRect().top <= box.getBoundingClientRect().bottom + 200) loadMore();
 }
 
 // ── Scroll pagination ──────────────────────────────────────────────────────
@@ -463,16 +466,16 @@ function initScrollPagination() {
   const el = document.getElementById('loadMoreSentinel');
   if (!el) return;
   el.addEventListener('click', () => loadMore());
+  // Root the observer in the table's scroll box, not the viewport.
+  const box = document.getElementById('tableWrap');
   if ('IntersectionObserver' in window) {
-    // rootMargin prefetches before the row is actually on screen, so the next
-    // batch is usually already there by the time you reach the bottom.
     new IntersectionObserver(entries => {
       if (entries.some(e => e.isIntersecting)) loadMore();
-    }, {rootMargin: '320px 0px'}).observe(el);
+    }, {root: box, rootMargin: '200px 0px'}).observe(el);
   } else {
-    window.addEventListener('scroll', () => {
+    box.addEventListener('scroll', () => {
       const r = el.getBoundingClientRect();
-      if (r.top < window.innerHeight + 400) loadMore();
+      if (r.top < box.getBoundingClientRect().bottom + 250) loadMore();
     }, {passive: true});
   }
 }
@@ -481,7 +484,7 @@ const _selected = new Set();
 
 function renderTable(people) {
   if (!people.length) {
-    document.getElementById('tableWrap').innerHTML = '<div class="empty">没有匹配的客户。</div>';
+    document.getElementById('peopleList').innerHTML = '<div class="empty">没有匹配的客户。</div>';
     updateSelMeta();
     return;
   }
@@ -490,7 +493,6 @@ function renderTable(people) {
     ? `<th style="min-width:112px;">分配给</th>`
     : `<th style="min-width:110px;">负责人</th>`;
   const html = `
-    <div style="overflow-x: auto;">
     <table class="crm-table">
       <thead>
         <tr>
@@ -512,9 +514,8 @@ function renderTable(people) {
       <tbody>
         ${people.map(p => renderRow(p)).join('')}
       </tbody>
-    </table>
-    </div>`;
-  document.getElementById('tableWrap').innerHTML = html;
+    </table>`;
+  document.getElementById('peopleList').innerHTML = html;
   // Restore checkbox state
   document.querySelectorAll('.row-cb').forEach(cb => {
     cb.checked = _selected.has(+cb.dataset.pid);

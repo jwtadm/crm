@@ -29,8 +29,10 @@
     <div class="progress-track"><div class="progress-fill" id="exportFill"></div></div>
     <div id="exportLabel" style="font-size:11.5px; color:var(--text-2); margin-top:6px;"></div>
   </div>
-  <div id="dbList" class="list" style="margin-top:12px; max-height:none;"><div class="empty">加载中…</div></div>
-  <div id="dbMore" class="load-more" style="display:none;"></div>
+  <div id="dbList" class="list" style="margin-top:12px;">
+    <div id="dbInner"><div class="empty">加载中…</div></div>
+    <div id="dbMore" class="load-more" style="display:none;"></div>
+  </div>
 </div>
 
 <!-- 详情抽屉 -->
@@ -153,7 +155,7 @@ async function loadList() {
   const seq = ++_listSeq;
   const {params, rerank} = dbParams(0);
   _dbOffset = 0; _dbCount = 0; _dbDone = false;
-  document.getElementById('dbList').innerHTML = skeletonList(8, {avatar:true});
+  document.getElementById('dbInner').innerHTML = skeletonList(8, {avatar:true});
   updateDbFooter();
   try {
     const r = await fetch('/api/db/list?' + params.toString());
@@ -165,7 +167,7 @@ async function loadList() {
     _dbOffset = rerank ? list.length : list.length;
     _dbDone = rerank || list.length < DB_BATCH;
     const showScore = !!params.get('description');
-    document.getElementById('dbList').innerHTML = list.length
+    document.getElementById('dbInner').innerHTML = list.length
       ? '<div class="acct-list">' + list.map(a => renderAccountRow(a, showScore)).join('') + '</div>'
       : '<div class="empty">数据库为空。去 Query 搜索或相似发现页面跑一次。</div>';
     bindDbRows();
@@ -173,7 +175,7 @@ async function loadList() {
     maybeFillDb();
   } catch (e) {
     if (seq !== _listSeq) return;   // aborted or superseded — don't clobber the UI
-    document.getElementById('dbList').innerHTML = `<div class="error-msg">${escapeHtml(e.message)}</div>`;
+    document.getElementById('dbInner').innerHTML = `<div class="error-msg">${escapeHtml(e.message)}</div>`;
   }
 }
 
@@ -192,7 +194,7 @@ async function loadMoreDb() {
     const list = d.accounts || [];
     if (!list.length) { _dbDone = true; return; }
     // append inside the list wrapper so the border/rounding stays continuous
-    const wrap = document.querySelector('#dbList .acct-list') || document.getElementById('dbList');
+    const wrap = document.querySelector('#dbList .acct-list') || document.getElementById('dbInner');
     wrap.insertAdjacentHTML('beforeend', list.map(a => renderAccountRow(a, false)).join(''));
     bindDbRows();
     _dbOffset += list.length;
@@ -210,25 +212,28 @@ async function loadMoreDb() {
 
 // Same reason as the similarity page: the observer only fires on a *change*,
 // so a sentinel that was already in the prefetch margin when the first batch
-// arrived never triggers again. Top up until it is below the fold.
+// arrived never triggers again. Top up until it is below the fold. The list is
+// a fixed-height scroll box, so "below the fold" means below the box.
 function maybeFillDb() {
   if (_dbLoading || _dbDone) return;
+  const box = document.getElementById('dbList');
   const el = document.getElementById('dbMore');
-  if (!el || el.style.display === 'none') return;
-  if (el.getBoundingClientRect().top <= window.innerHeight + 320) loadMoreDb();
+  if (!box || !el || el.style.display === 'none') return;
+  if (el.getBoundingClientRect().top <= box.getBoundingClientRect().bottom + 200) loadMoreDb();
 }
 
 function initDbScroll() {
   const el = document.getElementById('dbMore');
   if (!el) return;
   el.addEventListener('click', () => loadMoreDb());
+  const box = document.getElementById('dbList');
   if ('IntersectionObserver' in window) {
     new IntersectionObserver(entries => {
       if (entries.some(e => e.isIntersecting)) loadMoreDb();
-    }, {rootMargin: '320px 0px'}).observe(el);
+    }, {root: box, rootMargin: '200px 0px'}).observe(el);
   } else {
-    window.addEventListener('scroll', () => {
-      if (el.getBoundingClientRect().top < window.innerHeight + 400) loadMoreDb();
+    box.addEventListener('scroll', () => {
+      if (el.getBoundingClientRect().top < box.getBoundingClientRect().bottom + 250) loadMoreDb();
     }, {passive: true});
   }
 }

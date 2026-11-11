@@ -76,8 +76,10 @@
     <label class="status-filter"><input type="checkbox" class="status-cb" value="已放弃"> 已放弃</label>
     <span style="color:var(--text2); opacity:.7;">（不勾 = 不按状态过滤；勾上"已成交"就能只看成交客户名下的账号当种子）</span>
   </div>
-  <div id="dbList" class="list" style="margin-top:12px;"><div class="empty">加载中…</div></div>
-  <div id="simMore" class="load-more" style="display:none;"></div>
+  <div id="dbList" class="list" style="margin-top:12px;">
+    <div id="simList"><div class="empty">加载中…</div></div>
+    <div id="simMore" class="load-more" style="display:none;"></div>
+  </div>
 </div>
 
 <div class="card">
@@ -170,7 +172,7 @@ async function loadList() {
   const seq = ++_listSeq;
   const {params, rerank} = simParams(0);
   _simOffset = 0; _simDone = false;
-  document.getElementById('dbList').innerHTML = skeletonList(8, {avatar: true});
+  document.getElementById('simList').innerHTML = skeletonList(8, {avatar: true});
   updateSimFooter();
   try {
     const r = await fetch('/api/db/list?' + params.toString());
@@ -185,7 +187,7 @@ async function loadList() {
     maybeFillSim();
   } catch (e) {
     if (seq !== _listSeq) return;   // aborted or superseded — don't clobber the UI
-    document.getElementById('dbList').innerHTML = `<div class="error-msg">${escapeHtml(e.message)}</div>`;
+    document.getElementById('simList').innerHTML = `<div class="error-msg">${escapeHtml(e.message)}</div>`;
   }
 }
 
@@ -204,7 +206,7 @@ async function loadMoreSim() {
     const list = d.accounts || [];
     if (!list.length) { _simDone = true; return; }
     allAccounts = allAccounts.concat(list);
-    document.getElementById('dbList').insertAdjacentHTML('beforeend',
+    document.getElementById('simList').insertAdjacentHTML('beforeend',
       list.map(a => renderAccount(a, {checkbox: true, showScore: false})).join(''));
     bindSimCheckboxes();
     _simOffset += list.length;
@@ -223,31 +225,36 @@ async function loadMoreSim() {
 // inside the prefetch margin while the first batch was still loading (or the
 // batch is too short to push it down), no further event ever arrives and the
 // list looks stuck. Top up until the sentinel is genuinely below the fold.
+// It lives inside the scroll box, so measure against the box, not the viewport.
 function maybeFillSim() {
   if (_simLoading || _simDone) return;
+  const box = document.getElementById('dbList');
   const el = document.getElementById('simMore');
-  if (!el || el.style.display === 'none') return;
-  if (el.getBoundingClientRect().top <= window.innerHeight + 320) loadMoreSim();
+  if (!box || !el || el.style.display === 'none') return;
+  if (el.getBoundingClientRect().top <= box.getBoundingClientRect().bottom + 200) loadMoreSim();
 }
 
 function initSimScroll() {
   const el = document.getElementById('simMore');
   if (!el) return;
   el.addEventListener('click', () => loadMoreSim());
+  // Root the observer in the scroll box: with the default (viewport) root the
+  // sentinel is "always visible" and never fires again after the first event.
+  const box = document.getElementById('dbList');
   if ('IntersectionObserver' in window) {
     new IntersectionObserver(entries => {
       if (entries.some(e => e.isIntersecting)) loadMoreSim();
-    }, {rootMargin: '320px 0px'}).observe(el);
+    }, {root: box, rootMargin: '200px 0px'}).observe(el);
   }
 }
 
 function renderList() {
   const showScore = !!document.getElementById('descInput').value.trim();
   if (!allAccounts.length) {
-    document.getElementById('dbList').innerHTML = '<div class="empty">数据库为空。先用下方导入入口添加种子，或者去 Query 搜索页面跑一次。</div>';
+    document.getElementById('simList').innerHTML = '<div class="empty">数据库为空。先用下方导入入口添加种子，或者去 Query 搜索页面跑一次。</div>';
     return;
   }
-  document.getElementById('dbList').innerHTML = allAccounts
+  document.getElementById('simList').innerHTML = allAccounts
     .map(a => renderAccount(a, {checkbox: true, showScore}))
     .join('');
   bindSimCheckboxes();

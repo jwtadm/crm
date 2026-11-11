@@ -1155,15 +1155,26 @@ select:disabled {
   margin-bottom: 12px;
 }
 
+/* Fixed-height list viewport: the page stays put and the list itself scrolls.
+   The infinite-scroll sentinel must live *inside* this box (and the observer
+   must use it as root), otherwise scrolling the box never reaches it. */
 .list {
-  /* No max-height: the list grows with the page so the infinite-scroll
-     sentinel below it can actually be reached. A 480px inner scroller put the
-     sentinel outside the box — scrolling inside the box never triggered
-     "load more" and the list looked stuck at 20 rows. */
+  max-height: 480px;
+  overflow-y: auto;
   border: 1px solid var(--border);
   border-radius: var(--r);
   padding: 4px;
   background: var(--surface-2);
+}
+
+/* Same viewport for the customer table (both axes: the table is wider than
+   the viewport on narrow screens and the action column is sticky). */
+.table-box {
+  max-height: 480px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  background: var(--surface);
 }
 
 .list .result-item {
