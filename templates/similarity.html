@@ -77,6 +77,7 @@
     <span style="color:var(--text2); opacity:.7;">（不勾 = 不按状态过滤；勾上"已成交"就能只看成交客户名下的账号当种子）</span>
   </div>
   <div id="dbList" class="list" style="margin-top:12px;"><div class="empty">加载中…</div></div>
+  <div id="simMore" class="load-more" style="display:none;"></div>
 </div>
 
 <div class="card">
@@ -129,29 +130,101 @@ function resetFilter() {
 // Sequence guard: rapid filter/checkbox changes fire overlapping requests; an
 // older response landing late would overwrite `allAccounts` with stale rows.
 let _listSeq = 0;
+// 20 per batch (was: one request returning 200 cards, each pulling an external
+// avatar — a heavy first paint). Scrolling appends the next batch.
+const SIM_BATCH = 20;
+let _simOffset = 0;
+let _simLoading = false;
+let _simDone = false;
 
-async function loadList() {
-  const seq = ++_listSeq;
+function simParams(offset) {
+  const params = new URLSearchParams();
   const text = document.getElementById('textFilter').value.trim();
   const desc = document.getElementById('descInput').value.trim();
   const plats = [...document.querySelectorAll('.plat-cb:checked')].map(cb => cb.value);
   const statuses = [...document.querySelectorAll('.status-cb:checked')].map(cb => cb.value);
-  const params = new URLSearchParams();
   if (text) params.set('text', text);
   if (desc) params.set('description', desc);
   if (plats.length) params.set('platforms', plats.join(','));
   if (statuses.length) params.set('statuses', statuses.join(','));
-  document.getElementById('dbList').innerHTML = '<div class="empty">加载中…</div>';
+  if (desc) {
+    params.set('limit', '200');          // rerank sorts the whole batch in Python
+  } else {
+    params.set('limit', String(SIM_BATCH));
+    params.set('offset', String(offset));
+  }
+  return {params, rerank: !!desc};
+}
+
+function updateSimFooter() {
+  const el = document.getElementById('simMore');
+  if (!el) return;
+  if (_simDone) { el.style.display = 'none'; return; }
+  el.style.display = '';
+  el.innerHTML = _simLoading
+    ? '<span class="spinner" style="display:inline-block;vertical-align:-2px;margin-right:6px;"></span>正在加载下一批…'
+    : '继续向下滚动加载更多';
+}
+
+async function loadList() {
+  const seq = ++_listSeq;
+  const {params, rerank} = simParams(0);
+  _simOffset = 0; _simDone = false;
+  document.getElementById('dbList').innerHTML = skeletonList(8, {avatar: true});
+  updateSimFooter();
   try {
     const r = await fetch('/api/db/list?' + params.toString());
     const d = await r.json();
     if (seq !== _listSeq) return;   // superseded by a newer request
     if (d.error) throw new Error(d.error);
     allAccounts = d.accounts || [];
+    _simOffset = allAccounts.length;
+    _simDone = rerank || allAccounts.length < SIM_BATCH;
     renderList();
+    updateSimFooter();
   } catch (e) {
     if (seq !== _listSeq) return;   // aborted or superseded — don't clobber the UI
     document.getElementById('dbList').innerHTML = `<div class="error-msg">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+async function loadMoreSim() {
+  if (_simLoading || _simDone || !_simOffset) return;
+  const seq = _listSeq;
+  _simLoading = true;
+  updateSimFooter();
+  try {
+    const {params, rerank} = simParams(_simOffset);
+    if (rerank) { _simDone = true; return; }
+    const r = await fetch('/api/db/list?' + params.toString());
+    const d = await r.json();
+    if (seq !== _listSeq) return;
+    if (d.error) throw new Error(d.error);
+    const list = d.accounts || [];
+    if (!list.length) { _simDone = true; return; }
+    allAccounts = allAccounts.concat(list);
+    document.getElementById('dbList').insertAdjacentHTML('beforeend',
+      list.map(a => renderAccount(a, {checkbox: true, showScore: false})).join(''));
+    bindSimCheckboxes();
+    _simOffset += list.length;
+    if (list.length < SIM_BATCH) _simDone = true;
+  } catch (e) {
+    const el = document.getElementById('simMore');
+    if (el && seq === _listSeq) el.textContent = `加载失败：${e.message}（点击重试）`;
+  } finally {
+    _simLoading = false;
+    updateSimFooter();
+  }
+}
+
+function initSimScroll() {
+  const el = document.getElementById('simMore');
+  if (!el) return;
+  el.addEventListener('click', () => loadMoreSim());
+  if ('IntersectionObserver' in window) {
+    new IntersectionObserver(entries => {
+      if (entries.some(e => e.isIntersecting)) loadMoreSim();
+    }, {rootMargin: '320px 0px'}).observe(el);
   }
 }
 
@@ -164,7 +237,16 @@ function renderList() {
   document.getElementById('dbList').innerHTML = allAccounts
     .map(a => renderAccount(a, {checkbox: true, showScore}))
     .join('');
-  document.querySelectorAll('.select-cb').forEach(cb => {
+  bindSimCheckboxes();
+  updateSelCount();
+}
+
+// Wire the checkbox + row-click behaviour for every rendered row. Called again
+// after each appended batch, so scroll-loaded rows behave like the first page.
+function bindSimCheckboxes() {
+  document.querySelectorAll('#dbList .select-cb').forEach(cb => {
+    if (cb.dataset.bound) return;
+    cb.dataset.bound = '1';
     cb.checked = selected.has(+cb.dataset.id);
     cb.addEventListener('change', e => {
       const id = +e.target.dataset.id;
@@ -176,6 +258,8 @@ function renderList() {
     if (cb.checked) cb.closest('.result-item').classList.add('selected');
   });
   document.querySelectorAll('#dbList .result-item').forEach(it => {
+    if (it.dataset.bound) return;
+    it.dataset.bound = '1';
     it.addEventListener('click', e => {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'A') return;
       const cb = it.querySelector('.select-cb');
@@ -183,7 +267,6 @@ function renderList() {
       cb.dispatchEvent(new Event('change'));
     });
   });
-  updateSelCount();
 }
 function updateSelCount() {
   document.getElementById('selCount').textContent = `已选 ${selected.size} 个种子`;
@@ -279,6 +362,7 @@ for (const id of ['textFilter', 'descInput']) {
   });
 }
 
+initSimScroll();
 loadList();
 
 // ============================================================

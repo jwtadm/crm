@@ -866,18 +866,13 @@ select:disabled {
   border-color: var(--border-strong);
 }
 
-.result-item img {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  object-fit: cover;
-  background: var(--surface-2);
-  flex-shrink: 0;
-}
-
 /* Avatar box: fixed size, initials behind, picture layered on top. A failed
-   image just reveals the initials, so rows never shift. */
-.result-item .avatar {
+   image just reveals the initials, so rows never shift.
+   NOTE: this must be a standalone `.avatar` class, not `.result-item .avatar` —
+   /database rows use `.acct-row`, so a scoped rule silently skipped the circle,
+   the centring and the overflow clip, and a real 150px profile picture blew the
+   row apart. */
+.avatar {
   position: relative;
   width: 40px;
   height: 40px;
@@ -892,9 +887,11 @@ select:disabled {
   align-items: center;
   justify-content: center;
   letter-spacing: .02em;
+  line-height: 1;
+  user-select: none;
 }
 
-.result-item .avatar img {
+.avatar img {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -902,6 +899,8 @@ select:disabled {
   object-fit: cover;
   border-radius: 50%;
   background: var(--surface-2);
+  /* covers the initials while it loads; on error the element is removed */
+  z-index: 1;
 }
 
 .result-item .info { flex: 1; min-width: 0; }
@@ -1520,7 +1519,7 @@ select:disabled {
 
 .acct-row {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 12px;
   padding: 9px 14px;
   border-bottom: 1px solid var(--border);
@@ -1531,7 +1530,7 @@ select:disabled {
 .acct-row:last-child { border-bottom: none; }
 .acct-row:hover { background: var(--accent-light); }
 
-.acct-row .avatar { width: 34px; height: 34px; font-size: 13px; margin-top: 1px; }
+.acct-row .avatar { width: 34px; height: 34px; font-size: 13px; }
 
 .acct-row .acct-main { flex: 1; min-width: 0; }
 
