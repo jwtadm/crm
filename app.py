@@ -1446,6 +1446,9 @@ def api_settings_test():
     """
     payload = request.json or {}
     provider = (payload.get("provider") or "").strip()
+    # Force a fresh read: the save may have landed on another gunicorn worker,
+    # and this endpoint exists precisely to validate what was just saved.
+    settings.refresh()
     t0 = time.perf_counter()
     try:
         if provider == "openrouter_chat":

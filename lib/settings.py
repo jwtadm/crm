@@ -1,23 +1,23 @@
 """Runtime-mutable settings (API keys + provider config) backed by SQLite.
 
-Keys are read on every call so the UI can update them without a restart.
-Defaults cover non-secret provider URLs / model IDs, so the user only needs
-to fill in API keys to get going.
+Reads go through a short-lived process-local cache so the UI can still update
+values without a restart while hot paths (a 100-recipient email batch used to
+open 600 connections just to read 6 keys) stop hammering the database.
+
+Cache contract:
+  * one query loads every key, refreshed at most every _CACHE_TTL seconds;
+  * set_many() invalidates immediately in this process;
+  * refresh() forces a re-read, for callers that must see the just-saved value
+    (e.g. the /api/settings/test endpoint, whose request may land on a
+    different gunicorn worker than the save).
+So a save is visible everywhere within _CACHE_TTL seconds, and immediately to
+anyone who calls refresh() first.
 """
-import sqlite3
+import threading
 import time
-from contextlib import contextmanager
 
-from .db import DB_PATH
+from . import db
 
-
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS settings (
-    key        TEXT PRIMARY KEY,
-    value      TEXT NOT NULL DEFAULT '',
-    updated_at INTEGER NOT NULL
-);
-"""
 
 DEFAULTS: dict[str, str] = {
     # OpenRouter (chat + embeddings, OpenAI-compatible)
@@ -85,28 +85,57 @@ SECRET_KEYS = {
 }
 
 
+# How long a loaded snapshot is reused. Short on purpose: saves must propagate
+# across gunicorn workers (each has its own process cache) without a restart.
+_CACHE_TTL = 2.0
+
+_cache_lock = threading.Lock()
+_cache: dict = {"at": 0.0, "values": {}}
+
+
 def init() -> None:
-    with _conn() as c:
-        c.executescript(SCHEMA)
+    with db.tx() as c:
+        # Statement literal kept at the call site (this repo does not allow
+        # passing SQL text through a variable). Not executescript(): it would
+        # implicitly COMMIT, breaking db.tx()'s explicit BEGIN.
+        c.execute(
+            "CREATE TABLE IF NOT EXISTS settings ("
+            "  key        TEXT PRIMARY KEY,"
+            "  value      TEXT NOT NULL DEFAULT '',"
+            "  updated_at INTEGER NOT NULL"
+            ")"
+        )
+    refresh()
 
 
-@contextmanager
-def _conn():
-    c = sqlite3.connect(DB_PATH)
-    c.row_factory = sqlite3.Row
-    try:
-        yield c
-        c.commit()
-    finally:
-        c.close()
+def refresh() -> None:
+    """Drop the cached snapshot so the next read hits the database."""
+    with _cache_lock:
+        _cache["at"] = 0.0
+        _cache["values"] = {}
+
+
+def _load() -> dict[str, str]:
+    """All stored keys, from cache when fresh. One query otherwise."""
+    now = time.monotonic()
+    with _cache_lock:
+        cached = _cache["values"]
+        if cached and (now - _cache["at"]) < _CACHE_TTL:
+            return cached
+    with db.tx() as c:
+        rows = c.execute("SELECT key, value FROM settings").fetchall()
+    values = {r["key"]: r["value"] for r in rows}
+    with _cache_lock:
+        _cache["at"] = time.monotonic()
+        _cache["values"] = values
+    return values
 
 
 def get(key: str) -> str:
     """Return stored value, or empty/default. Never raises."""
-    with _conn() as c:
-        row = c.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
-    if row and row["value"]:
-        return row["value"]
+    v = _load().get(key)
+    if v:
+        return v
     return DEFAULTS.get(key, "")
 
 
@@ -127,9 +156,10 @@ def require(key: str) -> str:
 
 def all_settings(unmasked: bool = False) -> dict[str, str]:
     """Snapshot of every known key. Secrets are masked unless unmasked=True."""
+    stored = _load()          # one query for all 15 keys (used to be 15)
     out: dict[str, str] = {}
     for k in DEFAULTS:
-        v = get(k)
+        v = stored.get(k) or DEFAULTS.get(k, "")
         if not unmasked and k in SECRET_KEYS and v:
             out[k] = _mask(v)
         else:
@@ -146,7 +176,7 @@ def set_many(updates: dict[str, str]) -> dict[str, str]:
     """
     now = int(time.time())
     written: dict[str, str] = {}
-    with _conn() as c:
+    with db.tx() as c:
         for k, v in updates.items():
             if k not in DEFAULTS:
                 continue
@@ -161,6 +191,8 @@ def set_many(updates: dict[str, str]) -> dict[str, str]:
                 (k, v, now),
             )
             written[k] = v
+    if written:
+        refresh()   # this process sees the new values on its next read
     return written
 
 
