@@ -10,6 +10,7 @@ import json
 import os
 import sqlite3
 import struct
+import threading
 import time
 from contextlib import contextmanager
 from pathlib import Path
@@ -299,7 +300,13 @@ def _apply_migrations(c: sqlite3.Connection) -> None:
 # ---------- connection ----------
 
 def _conn() -> sqlite3.Connection:
-    c = sqlite3.connect(str(DB_PATH), timeout=30, isolation_level=None)
+    # check_same_thread=False: pooled read connections (see ro()) are handed out
+    # exclusively, so a given connection may be used by a different request
+    # thread later. ro() guarantees it arrives with no open transaction, and
+    # Python's sqlite3 is built in serialized mode (threadsafety == 3), so even
+    # accidental overlap serialises instead of corrupting.
+    c = sqlite3.connect(str(DB_PATH), timeout=30, isolation_level=None,
+                        check_same_thread=False)
     c.row_factory = sqlite3.Row
     c.execute("PRAGMA journal_mode = WAL")        # concurrent reads while writing
     c.execute("PRAGMA busy_timeout = 30000")      # wait up to 30s for locks
@@ -362,6 +369,101 @@ def tx():
         raise
     finally:
         c.close()
+
+
+# ---------- pooled read connections ----------
+
+# Every tx() opens a brand-new connection, so SQLite's page cache (64MB, set in
+# _conn) starts cold on each one. Measured on the production-sized DB, one
+# /api/stats call costs 62ms on a fresh connection vs 32ms on a warm one — half
+# the request was re-reading pages the previous request had already decoded
+# (and 64MB really is needed: at 16MB even a warm connection takes 57ms).
+#
+# So read-only work reuses connections. Writes deliberately do NOT: tx() keeps
+# its per-call connection so a failed transaction can never leave state for the
+# next caller. A pooled RO connection never holds a transaction — checked on
+# both checkout and return — so the worst case here is "slow", never "wrong".
+_RO_POOL_ENABLED = os.environ.get("SCOUT_DB_POOL", "1").strip().lower() not in (
+    "0", "false", "no", "off")
+# Each idle connection keeps its page cache resident: measured ~34MB RSS per
+# connection once it has served /api/stats. 1 is enough for a gunicorn *sync*
+# worker (one request at a time); concurrent readers just get a fresh
+# connection instead of waiting. Raise SCOUT_DB_POOL_MAX on a box with RAM to
+# spare (e.g. threaded dev server, or fewer workers).
+_RO_POOL_MAX_IDLE = max(0, int(os.environ.get("SCOUT_DB_POOL_MAX", "1") or 1))
+_ro_idle: list[sqlite3.Connection] = []
+_ro_lock = threading.Lock()
+
+
+def _ro_pool_clear() -> None:
+    with _ro_lock:
+        _ro_idle.clear()
+
+
+# gunicorn --preload imports this module in the master, then forks. A pooled
+# connection must never be carried across fork (the workers would share one open
+# file description and WAL state). The pool is empty at import time, so this is
+# belt-and-braces.
+if hasattr(os, "register_at_fork"):
+    os.register_at_fork(after_in_child=_ro_pool_clear)
+
+
+@contextmanager
+def ro():
+    """Read-only connection context, reused across calls when pooling is on.
+
+    Use for query-only paths (list/stats/detail). Anything that writes must use
+    tx(). Set SCOUT_DB_POOL=0 to fall back to one fresh connection per call.
+    """
+    conn: sqlite3.Connection | None = None
+    if _RO_POOL_ENABLED:
+        with _ro_lock:
+            if _ro_idle:
+                conn = _ro_idle.pop()
+    recycled = conn is not None
+    if conn is None:
+        conn = _conn()
+    try:
+        # A pooled connection must arrive clean. Recover instead of trusting.
+        if recycled and conn.in_transaction:
+            conn.execute("ROLLBACK")
+        yield conn
+    except Exception:
+        # A read path should never have started a transaction; if it did, that
+        # must not survive into whoever gets this connection next.
+        try:
+            if conn.in_transaction:
+                conn.execute("ROLLBACK")
+            discard = False
+        except Exception:
+            discard = True
+        if discard:
+            try:
+                conn.close()
+            except Exception:
+                pass
+        else:
+            _ro_release(conn)
+        raise
+    else:
+        _ro_release(conn)
+
+
+def _ro_release(conn: sqlite3.Connection) -> None:
+    """Return a clean connection to the idle pool, or close it."""
+    try:
+        clean = not conn.in_transaction
+    except Exception:
+        clean = False
+    if _RO_POOL_ENABLED and clean:
+        with _ro_lock:
+            if len(_ro_idle) < _RO_POOL_MAX_IDLE:
+                _ro_idle.append(conn)
+                return
+    try:
+        conn.close()
+    except Exception:
+        pass
 
 
 # ---------- embedding pack/unpack ----------
@@ -1429,14 +1531,20 @@ def get_daily_overview(c: sqlite3.Connection, start_ts: int, end_ts: int,
         country_dist.append({"country": r["country"], "count": r["n"]})
 
     # Intent distribution
-    # Grouping on the raw column lets idx_people_intent serve it as a covering
-    # index scan (measured 11.8ms -> 1.4ms); COALESCE(intent, '未评估') in the
-    # SQL forced a full table scan every request. The label merge and the
-    # deterministic ordering happen here instead. No row currently stores the
-    # literal '未评估', and even if one did the dict merge below folds it in.
+    # Grouping on the raw column lets an index serve it as a scan, where
+    # COALESCE(intent, '未评估') in the SQL forced a full table scan every
+    # request. Which index: with a user filter this is an equality on
+    # assigned_user_id, and walking idx_people_assigned is 3-5x faster than
+    # walking every value in idx_people_intent (measured 0.70ms vs 3.22ms for
+    # a 3k-person staff) — staff views always carry that filter, so the choice
+    # matters for them. Without a filter idx_people_intent is a covering scan
+    # (1.5ms) and is picked automatically.
+    # The label merge and the deterministic ordering happen in Python; no row
+    # stores the literal '未评估' today, and if one did the dict merge folds it in.
+    intent_from = "people INDEXED BY idx_people_assigned" if user_id else "people"
     intent_counts: dict[str, int] = {}
     for r in c.execute(
-        f"SELECT intent, COUNT(*) AS n FROM people WHERE 1=1 {user_filter} GROUP BY intent",
+        f"SELECT intent, COUNT(*) AS n FROM {intent_from} WHERE 1=1 {user_filter} GROUP BY intent",
         user_param,
     ).fetchall():
         label = r["intent"] or "未评估"

@@ -473,7 +473,7 @@ def api_people_list():
         assigned_filter = u["id"]
         owner_param = ""  # ignore staff-supplied owner
     include_rejected = (args.get("include_rejected") or "").lower() in ("1", "true", "yes")
-    with db.tx() as c:
+    with db.ro() as c:
         rows, total = db.list_people(
             c,
             q=(args.get("q") or "").strip(),
@@ -513,7 +513,7 @@ def api_people_match_ids():
     # Must match /api/people/list, otherwise "select all matching" silently
     # drops rows the table is showing (e.g. the 不适合 rows when the toggle is on).
     include_rejected = (args.get("include_rejected") or "").lower() in ("1", "true", "yes")
-    with db.tx() as c:
+    with db.ro() as c:
         rows, total = db.list_people_brief(
             c,
             q=(args.get("q") or "").strip(),
@@ -598,7 +598,7 @@ def api_people_get(person_id: int):
     u = auth.current_user()
     if not auth.user_owns_person(u, person_id):
         return jsonify({"error": "forbidden"}), 403
-    with db.tx() as c:
+    with db.ro() as c:
         row = db.get_person(c, person_id)
         if not row:
             return jsonify({"error": "not_found"}), 404
@@ -1574,7 +1574,7 @@ def api_stats():
         if raw_uid and raw_uid != "all":
             target_user_id = int(raw_uid)
 
-    with db.tx() as c:
+    with db.ro() as c:
         data = db.get_daily_overview(c, start_ts, end_ts, user_id=target_user_id)
 
     data["range"] = {"start": start_ts, "end": end_ts, "preset": range_preset}
@@ -1612,7 +1612,7 @@ def api_stats_trends():
     # Support offset parameter for "yesterday" etc.
     offset = int(args.get("offset") or 0)
 
-    with db.tx() as c:
+    with db.ro() as c:
         trends = db.get_trends(c, days, user_id=target_user_id,
                                start_ts=custom_start, end_ts=custom_end,
                                offset=offset)
@@ -1654,7 +1654,7 @@ def api_db_list():
     # Only load heavy columns (raw JSON + embeddings) when description rerank needs them
     need_embeddings = bool(description)
 
-    with db.tx() as c:
+    with db.ro() as c:
         rows = db.list_accounts(c, platforms=platforms, text=text,
                                 limit=limit, statuses=statuses,
                                 include_heavy=need_embeddings)
@@ -1682,7 +1682,7 @@ def api_db_list():
 def api_db_account(account_id: int):
     if not auth.user_owns_account(auth.current_user(), account_id):
         return jsonify({"error": "forbidden"}), 403
-    with db.tx() as c:
+    with db.ro() as c:
         row = db.get_account(c, account_id)
         person = db.get_person(c, row["person_id"])
         siblings = [
