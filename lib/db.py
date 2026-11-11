@@ -496,6 +496,12 @@ def update_embedding(c: sqlite3.Connection, account_id: int, embedding: list[flo
 
 # ---------- queries ----------
 
+# Largest number of ids bound into one `IN (...)` list. Must stay under
+# SQLITE_MAX_VARIABLE_NUMBER, which is 32766 on modern SQLite but only 999 on
+# older builds, so 900 is the portable ceiling. Also well clear of MySQL's
+# max_allowed_packet for the 45k-row platform_accounts table.
+_IN_CHUNK = 900
+
 # Columns excluded from default list queries to avoid loading ~19KB/row
 # of raw JSON + embedding blobs. Only loaded when explicitly needed (e.g. embedding rerank).
 _ACCOUNT_LIGHT_COLS = (
@@ -880,24 +886,32 @@ def list_people(
         if not people_rows:
             return [], total
 
-        # Now aggregate only for the people in this page
+        # Now aggregate only for the people in this page.
+        # Chunked: SQLite rejects a statement with more bound variables than
+        # SQLITE_MAX_VARIABLE_NUMBER (32766 on modern builds, 999 on old ones),
+        # and /api/people/match_ids requests the full match set at once
+        # (limit=100000). 43k rows meant 43k placeholders -> OperationalError
+        # "too many SQL variables" -> 500 on the most common filter.
+        # 900 keeps us under the legacy 999 ceiling and is MySQL-safe too.
         person_ids = [r["id"] for r in people_rows]
-        placeholders = ",".join("?" * len(person_ids))
-        agg_rows = c.execute(
-            f"""
-            SELECT person_id,
-                   GROUP_CONCAT(platform || ':' || username, '|') AS handles_blob,
-                   COUNT(*) AS account_count,
-                   MAX(follower_count) AS max_followers
-              FROM platform_accounts
-             WHERE person_id IN ({placeholders})
-             GROUP BY person_id
-            """,
-            person_ids,
-        ).fetchall()
-
-        # Build a lookup for aggregation data
-        agg_map = {r["person_id"]: dict(r) for r in agg_rows}
+        agg_map: dict[int, dict] = {}
+        for start in range(0, len(person_ids), _IN_CHUNK):
+            chunk = person_ids[start:start + _IN_CHUNK]
+            placeholders = ",".join("?" * len(chunk))
+            agg_rows = c.execute(
+                f"""
+                SELECT person_id,
+                       GROUP_CONCAT(platform || ':' || username, '|') AS handles_blob,
+                       COUNT(*) AS account_count,
+                       MAX(follower_count) AS max_followers
+                  FROM platform_accounts
+                 WHERE person_id IN ({placeholders})
+                 GROUP BY person_id
+                """,
+                chunk,
+            ).fetchall()
+            for r in agg_rows:
+                agg_map[r["person_id"]] = dict(r)
 
         # Merge aggregation into people rows
         rows = []
