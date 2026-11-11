@@ -37,12 +37,57 @@
   </div>
 </div>
 
+<div class="card">
+  <div class="card-header"><div class="h-badge">3</div><h2>界面主题</h2></div>
+  <p style="color:var(--text2); font-size:12px; margin-bottom:14px;">
+    只影响你这个浏览器，不写数据库、不影响别人。选中后立刻生效。
+  </p>
+  <div class="theme-picker" id="themePicker">
+    <button class="theme-opt" data-theme="indigo">
+      <span class="theme-swatch sw-indigo"></span>
+      <span class="theme-name">靛紫</span>
+      <span class="theme-desc">默认 · 沉稳</span>
+    </button>
+    <button class="theme-opt" data-theme="ocean">
+      <span class="theme-swatch sw-ocean"></span>
+      <span class="theme-name">深海</span>
+      <span class="theme-desc">冷静 · 科技感</span>
+    </button>
+    <button class="theme-opt" data-theme="sunset">
+      <span class="theme-swatch sw-sunset"></span>
+      <span class="theme-name">落日</span>
+      <span class="theme-desc">温暖 · 高对比</span>
+    </button>
+  </div>
+</div>
+
 <style>
 .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .settings-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text2); }
 .settings-grid input { width: 100%; }
 .settings-grid input[readonly] { background: var(--surface2); color: var(--text2); cursor: default; }
 @media (max-width: 720px) { .settings-grid { grid-template-columns: 1fr; } }
+
+.theme-picker { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+@media (max-width: 720px) { .theme-picker { grid-template-columns: 1fr; } }
+.theme-opt {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 3px;
+  padding: 12px 14px; text-align: left; cursor: pointer;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r); transition: all .15s;
+  font-family: var(--font);
+}
+.theme-opt:hover { border-color: var(--border-strong); transform: translateY(-1px); box-shadow: var(--shadow-sm); }
+.theme-opt.active { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-light); }
+.theme-swatch {
+  width: 100%; height: 26px; border-radius: var(--r-sm); margin-bottom: 6px;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.05);
+}
+.sw-indigo { background: linear-gradient(90deg, #5b54f0, #7c3aed, #a855f7); }
+.sw-ocean  { background: linear-gradient(90deg, #06b6d4, #2563eb, #4f46e5); }
+.sw-sunset { background: linear-gradient(90deg, #fb7185, #e11d48, #f59e0b); }
+.theme-name { font-size: 13px; font-weight: 600; color: var(--text); }
+.theme-desc { font-size: 11px; color: var(--text-3); }
 </style>
 
 <script>
@@ -92,5 +137,19 @@ async function saveReplyTo() {
 }
 
 loadMe();
+
+// ── 界面主题（只存 localStorage）─────────────────────────────
+function applyTheme(name) {
+  if (name === 'indigo') delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = name;
+  try { localStorage.setItem('crm-theme', name); } catch (e) {}
+  document.querySelectorAll('.theme-opt').forEach(b => {
+    b.classList.toggle('active', b.dataset.theme === name);
+  });
+}
+document.querySelectorAll('.theme-opt').forEach(btn => {
+  btn.onclick = () => applyTheme(btn.dataset.theme);
+});
+applyTheme(document.documentElement.dataset.theme || 'indigo');
 </script>
 {% endblock %}

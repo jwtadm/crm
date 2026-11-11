@@ -1,4 +1,5 @@
 {% extends "_base.html" %}
+{% set active = "stats" %}
 {% block title %}统计面板 — CRM{% endblock %}
 {% block content %}
 
@@ -14,7 +15,11 @@
 
 .range-btns { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .range-btns .btn { font-size: .82rem; padding: 5px 14px; }
-.range-btns .btn.active { background: var(--accent); color: #fff; }
+.range-btns .btn.active {
+  background: var(--grad);
+  color: #fff;
+  box-shadow: 0 6px 16px -8px rgba(79,70,229,.75);
+}
 .range-btns input[type="date"] {
   font-family: var(--font); font-size: .82rem; padding: 5px 10px;
   border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--surface);
@@ -28,12 +33,34 @@
   margin-bottom: 28px;
 }
 .kpi {
-  background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--r-lg); padding: 18px 16px;
-  text-align: center; transition: box-shadow .15s;
+  position: relative;
+  background: linear-gradient(180deg, #ffffff 0%, #f8faff 100%);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 18px 16px 14px;
+  text-align: left;
+  overflow: hidden;
+  transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease;
 }
-.kpi:hover { box-shadow: var(--shadow-md); }
-.kpi-value { font-size: 1.8rem; font-weight: 800; line-height: 1.1; }
+/* A colour rail per metric: the old cards were eight identical white boxes. */
+.kpi::before {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; top: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #818cf8, #4f46e5);
+}
+.kpi.blue::before   { background: linear-gradient(90deg, #60a5fa, #2563eb); }
+.kpi.green::before  { background: linear-gradient(90deg, #34d399, #059669); }
+.kpi.orange::before { background: linear-gradient(90deg, #fbbf24, #d97706); }
+.kpi.red::before    { background: linear-gradient(90deg, #f87171, #dc2626); }
+.kpi.purple::before { background: linear-gradient(90deg, #c084fc, #7c3aed); }
+.kpi.accent::before { background: linear-gradient(90deg, #818cf8, #4f46e5); }
+.kpi:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); border-color: #dbe2f2; }
+.kpi-value {
+  font-size: 1.85rem; font-weight: 800; line-height: 1.1;
+  font-variant-numeric: tabular-nums; letter-spacing: -.02em;
+}
 .kpi-label { font-size: .78rem; color: var(--text-2); margin-top: 4px; }
 .kpi-sub { font-size: .72rem; color: var(--text-3); margin-top: 2px; }
 .kpi.green .kpi-value { color: var(--green); }
@@ -47,6 +74,7 @@
 .stats-section {
   background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--r-lg); padding: 20px 24px; margin-bottom: 20px;
+  box-shadow: var(--shadow-sm);
 }
 .stats-section h2 {
   font-size: 1rem; font-weight: 700; margin-bottom: 14px;
@@ -54,7 +82,7 @@
 }
 .stats-section h2 .badge {
   font-size: .72rem; font-weight: 600; background: var(--accent-light);
-  color: var(--accent); padding: 2px 8px; border-radius: var(--r-full);
+  color: var(--accent-ink); padding: 2px 8px; border-radius: var(--r-full);
 }
 
 /* Tables */
@@ -94,6 +122,10 @@
 .trend-chart {
   display: flex; align-items: flex-end; gap: 6px; height: 160px; padding-top: 10px;
   border-bottom: 1px solid var(--border);
+  /* faint horizontal rules so a sparse range still reads as a chart */
+  background-image: repeating-linear-gradient(to top,
+    rgba(79,70,229,.07) 0, rgba(79,70,229,.07) 1px,
+    transparent 1px, transparent 32px);
   overflow-x: auto;
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;
@@ -179,20 +211,22 @@
 
 <!-- ─── KPI Cards ─────────────────────────────────────────── -->
 <div class="kpi-grid" id="kpiGrid">
-  <div class="kpi blue"><div class="kpi-value" id="kpiNew">-</div><div class="kpi-label">新增客户</div></div>
-  <div class="kpi accent"><div class="kpi-value" id="kpiContacted">-</div><div class="kpi-label">联系人数</div></div>
-  <div class="kpi"><div class="kpi-value" id="kpiEmails">-</div><div class="kpi-label">发送邮件</div><div class="kpi-sub" id="kpiEmailOk"></div></div>
-  <div class="kpi"><div class="kpi-value" id="kpiFollowups">-</div><div class="kpi-label">跟进记录</div></div>
-  <div class="kpi green"><div class="kpi-value" id="kpiReplies">-</div><div class="kpi-label">收到回复</div></div>
-  <div class="kpi green"><div class="kpi-value" id="kpiDeals">-</div><div class="kpi-label">成交客户</div></div>
-  <div class="kpi red"><div class="kpi-value" id="kpiRejected">-</div><div class="kpi-label">标记不合适</div></div>
-  <div class="kpi purple"><div class="kpi-value" id="kpiTotal">-</div><div class="kpi-label">客户总数</div><div class="kpi-sub" id="kpiVerified"></div></div>
+  <div class="kpi blue"><div class="kpi-value" id="kpiNew"><span class="skeleton sk-num"></span></div><div class="kpi-label">新增客户</div></div>
+  <div class="kpi accent"><div class="kpi-value" id="kpiContacted"><span class="skeleton sk-num"></span></div><div class="kpi-label">联系人数</div></div>
+  <div class="kpi"><div class="kpi-value" id="kpiEmails"><span class="skeleton sk-num"></span></div><div class="kpi-label">发送邮件</div><div class="kpi-sub" id="kpiEmailOk"></div></div>
+  <div class="kpi"><div class="kpi-value" id="kpiFollowups"><span class="skeleton sk-num"></span></div><div class="kpi-label">跟进记录</div></div>
+  <div class="kpi green"><div class="kpi-value" id="kpiReplies"><span class="skeleton sk-num"></span></div><div class="kpi-label">收到回复</div></div>
+  <div class="kpi green"><div class="kpi-value" id="kpiDeals"><span class="skeleton sk-num"></span></div><div class="kpi-label">成交客户</div></div>
+  <div class="kpi red"><div class="kpi-value" id="kpiRejected"><span class="skeleton sk-num"></span></div><div class="kpi-label">标记不合适</div></div>
+  <div class="kpi purple"><div class="kpi-value" id="kpiTotal"><span class="skeleton sk-num"></span></div><div class="kpi-label">客户总数</div><div class="kpi-sub" id="kpiVerified"></div></div>
 </div>
 
 <!-- ─── Trend Chart ───────────────────────────────────────── -->
 <div class="stats-section">
   <h2>📈 趋势图 <span class="badge" id="trendBadge">近7天</span></h2>
-  <div class="trend-chart" id="trendChart"></div>
+  <div class="trend-chart" id="trendChart">
+    <div class="skeleton" style="width:100%;height:130px;border-radius:10px"></div>
+  </div>
   <div class="legend">
     <div class="legend-item"><div class="legend-dot" style="background:var(--blue)"></div>新增</div>
     <div class="legend-item"><div class="legend-dot" style="background:var(--accent)"></div>联系</div>

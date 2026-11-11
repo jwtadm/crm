@@ -290,7 +290,7 @@ async function openDrawer(accountId) {
             <textarea id="crmNotes" rows="3" placeholder="联系进度 / 对方在意什么">${escapeHtml(p.notes || '')}</textarea>
           </div>
           <div style="display:flex; align-items:center; gap:10px; margin-top:12px;">
-            <button class="btn btn-accent btn-sm" onclick="savePerson(${p.id})">保存</button>
+            <button class="btn btn-accent btn-sm" onclick="savePerson(${p.id}, this)">保存</button>
             <span id="crmSaveStatus" class="form-msg"></span>
           </div>
         </div>` : '<div class="dsec-hint">这条账号还没有关联的客户记录，暂时不能编辑档案。</div>'}
@@ -323,11 +323,12 @@ function drawerSkeleton() {
 }
 function closeDrawer() { document.getElementById('drawer').classList.add('hidden'); }
 
-async function savePerson(pid) {
+async function savePerson(pid, btn) {
   const status = document.getElementById('crmStatus').value;
   const tags = document.getElementById('crmTags').value.split(',').map(s=>s.trim()).filter(Boolean);
   const owner = document.getElementById('crmOwner').value.trim();
   const notes = document.getElementById('crmNotes').value;
+  setBusy(btn, true);
   try {
     const r = await fetch(`/api/db/person/${pid}`, {
       method:'PATCH', headers:{'Content-Type':'application/json'},
@@ -338,6 +339,7 @@ async function savePerson(pid) {
     document.getElementById('crmSaveStatus').textContent = '✓ 已保存';
     setTimeout(() => { document.getElementById('crmSaveStatus').textContent=''; }, 2000);
   } catch (e) { alert('保存失败：' + e.message); }
+  finally { setBusy(btn, false); }
 }
 
 async function deleteAccount(id) {

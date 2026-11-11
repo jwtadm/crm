@@ -7,7 +7,7 @@
   <p>按"人"为单位的总览。状态/标签/负责人可就地编辑；点 ✉ 联系会同时打开邮件客户端 + 标记已联系。</p>
 </div>
 
-<div class="card admin-only hidden" id="hydrateCard" style="border:1px dashed var(--accent-soft); padding:14px 18px;">
+<div class="card admin-only hidden" id="hydrateCard" style="background:var(--grad-soft); border:1px solid var(--accent-soft); padding:14px 18px;">
   <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
     <div class="h-badge"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2s-6 7.5-6 12a6 6 0 0 0 12 0c0-4.5-6-12-6-12z"/></svg></div>
     <div style="flex:1; min-width:260px;">
@@ -873,7 +873,7 @@ async function renderHandlesDrawer() {
       <div class="input-row" style="gap:6px; margin-bottom:10px;">
         <input type="text" id="followupInput" placeholder="例：3 月 18 日电话沟通，对方最在意包邮政策…"
                style="flex:1;" onkeydown="if(event.key==='Enter') onAddFollowup()">
-        <button class="btn btn-accent btn-sm" onclick="onAddFollowup()">＋ 添加</button>
+        <button class="btn btn-accent btn-sm" onclick="onAddFollowup(this)">＋ 添加</button>
       </div>
       <div id="followupList" style="max-height:240px; overflow-y:auto;"></div>
     </div>
@@ -883,7 +883,7 @@ async function renderHandlesDrawer() {
       <div class="input-row" style="gap:6px;">
         <input type="datetime-local" id="reminderAt" style="flex:0 0 190px;">
         <input type="text" id="reminderContent" placeholder="例：跟进合作意向（可空）" style="flex:1;">
-        <button class="btn btn-accent btn-sm" onclick="onAddReminder()">设提醒</button>
+        <button class="btn btn-accent btn-sm" onclick="onAddReminder(this)">设提醒</button>
       </div>
       <div id="reminderMsg" class="dsec-hint"></div>
       <div id="reminderList" style="margin-top:8px;"></div>
@@ -1060,23 +1060,28 @@ async function loadFollowups() {
   }
 }
 
-async function onAddFollowup() {
+async function onAddFollowup(btn) {
   const pid = _handlesDrawerPid;
   const inp = document.getElementById('followupInput');
   const content = (inp.value || '').trim();
   if (!content) return;
-  const r = await fetch(`/api/people/${pid}/followups`, {
-    method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({content}),
-  });
-  if (!r.ok) {
-    const d = await r.json();
-    alert('添加失败：' + (d.detail || d.error || ''));
-    return;
+  setBusy(btn, true);
+  try {
+    const r = await fetch(`/api/people/${pid}/followups`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({content}),
+    });
+    if (!r.ok) {
+      const d = await r.json();
+      alert('添加失败：' + (d.detail || d.error || ''));
+      return;
+    }
+    inp.value = '';
+    await loadFollowups();
+    loadList();  // refresh "最近联系" column
+  } finally {
+    setBusy(btn, false);
   }
-  inp.value = '';
-  await loadFollowups();
-  loadList();  // refresh "最近联系" column
 }
 
 async function onDeleteFollowup(fid) {
@@ -1116,29 +1121,34 @@ async function loadReminders() {
   } catch (e) {}
 }
 
-async function onAddReminder() {
+async function onAddReminder(btn) {
   const pid = _handlesDrawerPid;
   const atRaw = document.getElementById('reminderAt').value;
   const content = document.getElementById('reminderContent').value.trim();
   const msg = document.getElementById('reminderMsg');
   if (!atRaw) { msg.textContent = '先选个时间'; msg.style.color = 'var(--red)'; return; }
   const remind_at = Math.floor(new Date(atRaw).getTime() / 1000);
-  const r = await fetch(`/api/people/${pid}/reminders`, {
-    method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({remind_at, content}),
-  });
-  if (!r.ok) {
-    const d = await r.json();
-    msg.textContent = '失败：' + (d.detail || d.error || '');
-    msg.style.color = 'var(--red)';
-    return;
+  setBusy(btn, true);
+  try {
+    const r = await fetch(`/api/people/${pid}/reminders`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({remind_at, content}),
+    });
+    if (!r.ok) {
+      const d = await r.json();
+      msg.textContent = '失败：' + (d.detail || d.error || '');
+      msg.style.color = 'var(--red)';
+      return;
+    }
+    msg.innerHTML = '<span style="color:var(--green)">✓ 已设置</span>';
+    document.getElementById('reminderAt').value = '';
+    document.getElementById('reminderContent').value = '';
+    await loadReminders();
+    // Trigger banner refresh next tick
+    setTimeout(pollDueReminders, 500);
+  } finally {
+    setBusy(btn, false);
   }
-  msg.innerHTML = '<span style="color:var(--green)">✓ 已设置</span>';
-  document.getElementById('reminderAt').value = '';
-  document.getElementById('reminderContent').value = '';
-  await loadReminders();
-  // Trigger banner refresh next tick
-  setTimeout(pollDueReminders, 500);
 }
 
 async function onDismissReminder(rid) {

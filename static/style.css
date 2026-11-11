@@ -3,24 +3,33 @@
    ═══════════════════════════════════════════════════════════════ */
 
 :root {
-  --bg: #f5f6fa;
+  --bg: #f3f5fc;
   --surface: #ffffff;
-  --surface-2: #f0f1f5;
-  --surface-3: #e4e6ed;
-  --border: #e4e6ed;
-  --border-strong: #cdd0da;
+  --surface-2: #f6f8fe;
+  --surface-3: #e8ecf9;
+  --border: #e3e8f4;
+  --border-strong: #c9d2e6;
 
-  --text: #1a1d2e;
-  --text-2: #5a5e72;
-  --text-3: #9194a5;
+  --text: #0f1526;
+  --text-2: #4b5470;
+  --text-3: #8a92ab;
 
   --accent: #4f46e5;
+  --accent-2: #7c3aed;
   --accent-hover: #4338ca;
-  --accent-light: #eef2ff;
+  --accent-light: #eef1ff;
   --accent-soft: #c7d2fe;
+  --accent-ink: #3730a3;
+
+  /* Brand gradients: primary actions, brand mark, highlighted numbers. */
+  --grad: linear-gradient(135deg, #5b54f0 0%, #7c3aed 55%, #a855f7 100%);
+  --grad-soft: linear-gradient(135deg, #eef1ff 0%, #f6f0ff 100%);
+  --grad-page: radial-gradient(1100px 420px at 4% -8%, rgba(99,102,241,.13), transparent 62%),
+               radial-gradient(900px 380px at 100% -6%, rgba(168,85,247,.10), transparent 58%);
 
   --green: #059669;
   --green-light: #ecfdf5;
+  --green-ink: #065f46;
   --orange: #d97706;
   --orange-light: #fffbeb;
   --red: #dc2626;
@@ -31,17 +40,20 @@
   --pink-light: #fdf2f8;
   --purple: #7c3aed;
   --purple-light: #f5f3ff;
+  --teal: #0d9488;
+  --teal-light: #f0fdfa;
 
-  --r: 8px;
-  --r-sm: 6px;
-  --r-lg: 12px;
-  --r-xl: 16px;
+  --r: 9px;
+  --r-sm: 7px;
+  --r-lg: 14px;
+  --r-xl: 18px;
   --r-full: 999px;
 
-  --shadow-sm: 0 1px 2px rgba(0,0,0,.05);
-  --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.04);
-  --shadow-md: 0 4px 12px rgba(0,0,0,.08);
-  --shadow-lg: 0 8px 24px rgba(0,0,0,.1);
+  --shadow-sm: 0 1px 2px rgba(15,21,38,.04), 0 1px 1px rgba(15,21,38,.03);
+  --shadow: 0 1px 3px rgba(15,21,38,.06), 0 1px 2px rgba(15,21,38,.04);
+  --shadow-md: 0 8px 24px -12px rgba(30,41,105,.24), 0 2px 6px rgba(15,21,38,.04);
+  --shadow-lg: 0 24px 48px -24px rgba(30,41,105,.35), 0 8px 20px -12px rgba(15,21,38,.18);
+  --ring: 0 0 0 3px rgba(79,70,229,.16);
 
   --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   --mono: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
@@ -67,6 +79,48 @@
   --purple-dim: var(--purple-light);
 }
 
+/* ─── Colour themes ─────────────────────────────────────────────
+   Picked in 我的 → 界面主题, stored in localStorage, applied on <html>
+   before first paint. Only the brand hue and the page wash change; the
+   semantic colours (green/red/orange) stay put so status keeps its meaning. */
+:root[data-theme="ocean"] {
+  --accent: #0e7490;
+  --accent-2: #2563eb;
+  --accent-hover: #155e75;
+  --accent-light: #ecfeff;
+  --accent-soft: #a5f3fc;
+  --accent-ink: #155e75;
+  --bg: #f1f7fb;
+  --surface-2: #f4f9fd;
+  --surface-3: #e6eff7;
+  --border: #dfeaf3;
+  --border-strong: #c3d8e6;
+  --grad: linear-gradient(135deg, #0891b2 0%, #2563eb 58%, #4f46e5 100%);
+  --grad-soft: linear-gradient(135deg, #ecfeff 0%, #eff6ff 100%);
+  --grad-page: radial-gradient(1100px 420px at 4% -8%, rgba(6,182,212,.14), transparent 62%),
+               radial-gradient(900px 380px at 100% -6%, rgba(37,99,235,.10), transparent 58%);
+  --ring: 0 0 0 3px rgba(14,116,144,.18);
+}
+
+:root[data-theme="sunset"] {
+  --accent: #e11d48;
+  --accent-2: #f59e0b;
+  --accent-hover: #be123c;
+  --accent-light: #fff1f2;
+  --accent-soft: #fecdd3;
+  --accent-ink: #9f1239;
+  --bg: #fbf5f4;
+  --surface-2: #fdf7f6;
+  --surface-3: #f8e9e7;
+  --border: #f2e3e1;
+  --border-strong: #e2c9c5;
+  --grad: linear-gradient(135deg, #f43f5e 0%, #e11d48 52%, #ea580c 100%);
+  --grad-soft: linear-gradient(135deg, #fff1f2 0%, #fffbeb 100%);
+  --grad-page: radial-gradient(1100px 420px at 4% -8%, rgba(225,29,72,.10), transparent 62%),
+               radial-gradient(900px 380px at 100% -6%, rgba(245,158,11,.12), transparent 58%);
+  --ring: 0 0 0 3px rgba(225,29,72,.16);
+}
+
 /* ─── Reset ─────────────────────────────────────────────────── */
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -75,13 +129,68 @@ html { font-size: 14px; -webkit-text-size-adjust: 100%; }
 
 body {
   font-family: var(--font);
-  background: var(--bg);
+  background-color: var(--bg);
+  background-image: var(--grad-page);
+  background-repeat: no-repeat;
   color: var(--text);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
 
-::selection { background: rgba(79,70,229,.12); }
+/* Thin, tinted scrollbars — the default Windows bars looked like part of the
+   old grey theme and clashed with the panel styling. */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: #ccd5ea;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover { background: #b3bfdd; background-clip: content-box; }
+
+::selection { background: rgba(79,70,229,.16); }
+
+/* ─── Global loading bar ────────────────────────────────────── */
+#topProgress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .18s ease;
+}
+#topProgress.on { opacity: 1; }
+#topProgress i {
+  display: block;
+  height: 100%;
+  width: 100%;
+  background: var(--grad);
+  transform: scaleX(0);
+  transform-origin: 0 50%;
+  box-shadow: 0 0 12px rgba(124,58,237,.5);
+}
+
+/* ─── Shared motion ─────────────────────────────────────────── */
+@keyframes fade-in { from { opacity: 0 } to { opacity: 1 } }
+@keyframes fade-up { from { opacity: 0; transform: translateY(6px) } to { opacity: 1; transform: none } }
+@keyframes spin { to { transform: rotate(360deg) } }
+
+.container { animation: fade-in .22s ease both; }
+.crm-table tbody tr { animation: fade-in .2s ease both; }
+
+/* Respect the OS setting: no movement, no looping spinners. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
 
 /* ─── Layout ────────────────────────────────────────────────── */
 
@@ -94,11 +203,13 @@ body {
 /* ─── Top Nav ───────────────────────────────────────────────── */
 
 .topnav {
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
+  background: rgba(255,255,255,.84);
+  border-bottom: 1px solid rgba(227,232,244,.9);
   position: sticky;
   top: 0;
   z-index: 100;
+  backdrop-filter: saturate(180%) blur(14px);
+  -webkit-backdrop-filter: saturate(180%) blur(14px);
 }
 
 .topnav-inner {
@@ -106,34 +217,50 @@ body {
   margin: 0 auto;
   display: flex;
   align-items: center;
-  height: 52px;
+  height: 56px;
   padding: 0 32px;
   gap: 2px;
+  min-width: 0;
 }
 
 .brand {
-  font-weight: 700;
-  font-size: 17px;
+  font-weight: 800;
+  font-size: 16px;
   margin-right: 20px;
   display: flex;
   align-items: center;
-  gap: 8px;
-  letter-spacing: -0.02em;
+  gap: 9px;
+  letter-spacing: -0.01em;
   color: var(--text);
   text-decoration: none;
-}
-
-.brand svg {
   flex-shrink: 0;
 }
 
-.brand span {
-  color: var(--accent);
+.brand-mark {
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  background: var(--grad);
+  box-shadow: 0 4px 12px -4px rgba(79,70,229,.65);
+  flex-shrink: 0;
+}
+
+.brand-mark svg { flex-shrink: 0; }
+
+.brand-text {
+  background: var(--grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 .navlink {
-  padding: 6px 12px;
-  border-radius: var(--r-sm);
+  padding: 7px 11px;
+  border-radius: 8px;
   color: var(--text-2);
   text-decoration: none;
   font-size: 13px;
@@ -142,12 +269,14 @@ body {
   white-space: nowrap;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
 .navlink svg {
   flex-shrink: 0;
-  opacity: .7;
+  opacity: .65;
+  transition: opacity .15s, stroke .15s;
 }
 
 .navlink:hover {
@@ -160,8 +289,9 @@ body {
 }
 
 .navlink.active {
-  color: var(--accent);
+  color: var(--accent-ink);
   background: var(--accent-light);
+  box-shadow: inset 0 0 0 1px rgba(79,70,229,.16);
   font-weight: 600;
 }
 
@@ -180,29 +310,60 @@ body {
 
 .nav-stats {
   margin-left: auto;
-  font-size: 12px;
+  font-size: 11.5px;
   color: var(--text-3);
   display: flex;
-  gap: 14px;
+  gap: 6px;
   align-items: center;
+  min-width: 0;
+}
+
+.nav-stat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  padding: 3px 9px;
+  border-radius: var(--r-full);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  white-space: nowrap;
 }
 
 .nav-stats b {
   color: var(--text);
-  font-weight: 600;
-  font-size: 13px;
-  margin-right: 2px;
+  font-weight: 700;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
+
+.nav-stat.is-ig b { color: var(--pink); }
+.nav-stat.is-x b { color: var(--text); }
+.nav-stat.is-tt b { color: var(--teal); }
 
 .nav-user {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   font-size: 12px;
   color: var(--text-2);
-  margin-left: 14px;
-  padding-left: 14px;
+  margin-left: 12px;
+  padding-left: 12px;
   border-left: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.nav-user-name {
+  max-width: 90px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.nav-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .nav-user a {
@@ -215,6 +376,26 @@ body {
   color: var(--accent);
 }
 
+/* ─── Responsive nav ──────────────────────────────────────────
+   At 1440px the stat chips still fit; below that they were the first thing to
+   push the document wider than the viewport — every page grew a horizontal
+   scrollbar at ~1000px, which is what the screenshots from the 976px window
+   showed. Drop the chips first, then the link labels. */
+@media (max-width: 1500px) {
+  .nav-stats { display: none; }
+}
+@media (max-width: 1020px) {
+  .nav-label { display: none; }
+  .navlink { padding: 8px; }
+  .nav-user-name { display: none; }
+}
+@media (max-width: 860px) {
+  .nav-btn-label { display: none; }
+  .brand-text { display: none; }
+  .topnav-inner { padding: 0 16px; }
+  .container { padding: 20px 16px 40px; }
+}
+
 /* ─── Page Header ───────────────────────────────────────────── */
 
 .page-header {
@@ -223,13 +404,16 @@ body {
 
 .page-header h1 {
   font-size: 24px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  font-weight: 800;
+  letter-spacing: -0.025em;
   color: var(--text);
 }
 
 .page-header h1 span {
-  color: var(--accent);
+  background: var(--grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 .page-header p {
@@ -247,7 +431,10 @@ body {
   padding: 20px 24px;
   margin-bottom: 16px;
   box-shadow: var(--shadow-sm);
+  transition: box-shadow .2s ease, border-color .2s ease;
 }
+
+.card:hover { border-color: #dbe2f2; }
 
 .card-header {
   display: flex;
@@ -366,15 +553,47 @@ select:disabled {
   cursor: not-allowed;
 }
 
+/* Busy state: the label is hidden and a spinner takes its place, so a click
+   that started a 6-second job never looks like it did nothing. */
+.btn.is-busy {
+  position: relative;
+  color: transparent !important;
+  pointer-events: none;
+  opacity: 1;
+}
+.btn.is-busy > * { visibility: hidden; }
+.btn.is-busy::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,.45);
+  border-top-color: #fff;
+  animation: spin .7s linear infinite;
+}
+.btn-ghost.is-busy::after {
+  border-color: rgba(79,70,229,.22);
+  border-top-color: var(--accent);
+}
+
 .btn-accent {
-  background: var(--accent);
+  background: var(--grad);
+  background-size: 160% 160%;
   color: white;
+  box-shadow: 0 4px 12px -6px rgba(79,70,229,.7);
 }
 
 .btn-accent:hover:not(:disabled) {
-  background: var(--accent-hover);
-  box-shadow: 0 2px 8px rgba(79,70,229,.25);
+  background-position: 100% 0;
+  box-shadow: 0 8px 20px -8px rgba(79,70,229,.65);
+  transform: translateY(-1px);
 }
+
+.btn-accent:active:not(:disabled) { transform: translateY(0); }
 
 .btn-green {
   background: var(--green);
@@ -460,7 +679,7 @@ select:disabled {
   border-bottom: 1px solid var(--border);
   position: sticky;
   top: 0;
-  background: var(--surface);
+  background: linear-gradient(180deg, #fbfcff 0%, #f4f7fe 100%);
   z-index: 1;
 }
 
@@ -468,10 +687,15 @@ select:disabled {
   padding: 10px 14px;
   border-bottom: 1px solid var(--border);
   vertical-align: top;
+  transition: background-color .12s ease;
 }
 
 .crm-table tr:hover td {
-  background: var(--surface-2);
+  background: #f4f7ff;
+}
+
+.crm-table tr:hover td:first-child {
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 
 .crm-table tr:last-child td {
@@ -517,6 +741,10 @@ select:disabled {
   box-shadow: -2px 0 6px -2px rgba(0,0,0,.06);
   border-left: 1px solid var(--border);
 }
+
+/* The sticky action cell paints its own opaque background, so the row hover
+   and the zebra tint have to be repeated here or the column stays white. */
+.crm-table tr:hover td.action-col { background: #f4f7ff; }
 
 .crm-table tr:hover td.action-col {
   background: var(--surface-2);
@@ -855,8 +1083,8 @@ select:disabled {
   flex-shrink: 0;
   border-radius: 50%;
   overflow: hidden;
-  background: var(--surface-3);
-  color: var(--text-3);
+  background: linear-gradient(180deg, var(--surface-3), #eef1fa);
+  color: var(--text-2);
   font-size: 15px;
   font-weight: 600;
   display: flex;
@@ -1274,8 +1502,17 @@ select:disabled {
 .skeleton {
   position: relative;
   overflow: hidden;
-  background: var(--surface-2);
+  background: var(--surface-3);
   border-radius: var(--r-sm);
+}
+
+/* KPI number placeholder: same box as the 1.85rem value it replaces. */
+.sk-num {
+  display: inline-block;
+  width: 68px;
+  height: 26px;
+  border-radius: 7px;
+  vertical-align: -2px;
 }
 
 .skeleton::after {
