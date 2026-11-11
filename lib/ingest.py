@@ -52,7 +52,10 @@ def _llm_filter_enabled() -> bool:
 REJECTED_COSINE_THRESHOLD = 0.88
 
 _REJ_LOCK = threading.Lock()
-_REJ_CACHE: dict = {"signature": None, "vectors": []}  # vectors: list[(account_id, username, vec)]
+_REJ_CACHE: dict = {"signature": None, "vectors": [], "matrix": None}
+# vectors: list[(account_id, username, vec)]
+# matrix:  unit-normalised float32 (n_pool, dim) numpy array for the fast path,
+#          or None when numpy is unavailable (keep _load_rejection_pool in sync).
 
 
 def _rejection_pool_signature() -> tuple[int, int]:
@@ -78,6 +81,10 @@ def _load_rejection_pool() -> list[tuple[int, str, list[float]]]:
         vecs = [(r["id"], r["username"] or "", db.unpack_embedding(r["bio_embedding"])) for r in rows]
         _REJ_CACHE["signature"] = sig
         _REJ_CACHE["vectors"] = vecs
+        # Pre-normalise once per pool build so each batch is a single matmul.
+        # Built straight from the blobs (the list round-trip above is only kept
+        # for the no-numpy fallback). None when numpy is missing.
+        _REJ_CACHE["matrix"] = ai.matrix_from_packed([r["bio_embedding"] for r in rows])
         return vecs
 
 
@@ -108,18 +115,39 @@ def _filter_against_rejected(candidate_norms: list[dict]) -> tuple[list[dict], l
     vec_by_idx = dict(zip(indices_with_text, cand_vecs))
     kept: list[dict] = []
     rejected_filtered: list[dict] = []
+
+    # Fast path: one matmul for the whole batch against the cached pool matrix
+    # (9.6 ms for 5k pool rows vs ~20 s for the per-pair cosine loop).
+    # best_score/best_match semantics are identical — 0.0 / "" when nothing
+    # scores above zero, first maximum on ties.
+    fast = None
+    if ai.numpy_available():
+        matrix = _REJ_CACHE.get("matrix")
+        if matrix is not None:
+            q_idx = [i for i in indices_with_text if vec_by_idx.get(i)]
+            res = ai.best_match([vec_by_idx[i] for i in q_idx], matrix)
+            if res is not None:
+                fast = dict(zip(q_idx, zip(res[0], res[1])))
+
     for i, n in enumerate(candidate_norms):
         v = vec_by_idx.get(i)
         if not v:
             kept.append(n)
             continue
-        best_score = 0.0
-        best_match = ""
-        for _aid, uname, rv in pool:
-            score = ai.cosine(v, rv)
-            if score > best_score:
-                best_score = score
-                best_match = uname
+        if fast is not None:
+            score, pool_pos = fast[i]
+            if score > 0:
+                best_score, best_match = score, pool[pool_pos][1]
+            else:
+                best_score, best_match = 0.0, ""
+        else:
+            best_score = 0.0
+            best_match = ""
+            for _aid, uname, rv in pool:
+                score = ai.cosine(v, rv)
+                if score > best_score:
+                    best_score = score
+                    best_match = uname
         if best_score > REJECTED_COSINE_THRESHOLD:
             rejected_filtered.append({
                 "username": n.get("username") or "?",
