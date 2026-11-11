@@ -8,8 +8,9 @@ import json
 import sqlite3
 import sys
 import time
+from pathlib import Path
 
-sys.path.insert(0, "/root/ig_scraper")
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from lib import auth, db, audit  # noqa: F401  audit kept for parity with prod path
 from tests.rrweb._lib import seed as lib

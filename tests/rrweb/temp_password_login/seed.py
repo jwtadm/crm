@@ -7,7 +7,9 @@ CRUCIAL: this user is a fixture (rrwebfx_ prefix) so the temp-password reset
 NEVER touches real staff. The runner-wired test DB makes that doubly safe.
 """
 import sys
-sys.path.insert(0, "/root/ig_scraper")
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from lib import auth, db
 

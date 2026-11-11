@@ -1,6 +1,8 @@
 """Wipe any prior fixture staff user; admin is ensured by the runner."""
 import sys
-sys.path.insert(0, "/root/ig_scraper")
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from lib import auth, db
 

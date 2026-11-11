@@ -9,8 +9,11 @@ import sys
 import urllib.error
 import urllib.request
 from http.cookiejar import CookieJar
+from pathlib import Path
 
-sys.path.insert(0, "/root/ig_scraper")
+# Repo root derived from this file's location, so the script runs from any
+# checkout (Windows dev box, /opt/ig_scraper on the server) unedited.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from lib import auth as _auth_mod, db as _db, ingest as _ingest
 
 B = "http://localhost:5001"

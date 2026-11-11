@@ -6,7 +6,9 @@ the UI registration flow (which has its own test).
 """
 import os
 import sys
-sys.path.insert(0, "/root/ig_scraper")
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from lib import auth, db
 

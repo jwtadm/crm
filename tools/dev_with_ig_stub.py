@@ -21,7 +21,11 @@ Usage: .venv/bin/python tools/dev_with_ig_stub.py
 """
 import os
 import sys
-sys.path.insert(0, "/root/ig_scraper")
+from pathlib import Path
+
+# Repo root derived from this file's location, so the script runs from any
+# checkout (Windows dev box, /opt/ig_scraper on the server) unedited.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from lib import ai, db, mailer, settings
 from platforms import instagram as ig, tiktok as tk, x as twi

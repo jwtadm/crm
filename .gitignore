@@ -21,6 +21,9 @@ config_local.py
 *.bak
 *.bak-*
 
+# refactor baseline snapshots (tools/baseline_capture.py output; local evidence only)
+reports/
+
 # rrweb regression suite scratch DB
 tests/.scout-test.db
 tests/.scout-test.db-*
