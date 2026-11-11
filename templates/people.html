@@ -230,15 +230,16 @@
 {% endraw %}
 
 <!-- Handles drawer (per-person handle editor) -->
-<div id="handlesDrawer" class="hidden">
-  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 14px;">
-    <div>
-      <h2 style="font-size:16px;">平台账号</h2>
-      <div id="handlesDrawerSubtitle" style="font-size:12px; color:var(--text2); margin-top:2px;"></div>
+<div id="handlesDrawer" class="drawer hidden">
+  <div class="drawer-head">
+    <div class="drawer-head-main">
+      <h2 class="drawer-title">平台账号</h2>
+      <div class="drawer-sub" id="handlesDrawerSubtitle"></div>
     </div>
-    <button class="btn btn-ghost btn-sm" onclick="closeHandlesDrawer()">✕ 关闭</button>
+    <button class="drawer-close" onclick="closeHandlesDrawer()" title="关闭 (Esc)">✕</button>
   </div>
-  <div id="handlesDrawerBody"></div>
+  <div class="drawer-body" id="handlesDrawerBody"></div>
+  <div class="drawer-foot" id="handlesDrawerFoot" style="display:none;"></div>
 </div>
 
 
@@ -583,9 +584,12 @@ function renderRow(p) {
   ).join('');
   const statusOpts = statusOptionsFor(p.status).map(([v, l]) => `<option value="${v}" ${v === p.status ? 'selected' : ''}>${l}</option>`).join('');
   const mailto = buildMailto(p);
+  const mailIcon = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>';
+  // No email → keep the same icon slot (greyed out) instead of a stray dash,
+  // so the three actions stay aligned and it is obvious *why* nothing happens.
   const contactBtn = mailto
-    ? `<a class="btn-contact" href="${mailto}" onclick="onContact(${p.id})" title="发邮件"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg></a>`
-    : `<span style="color:var(--text-3); font-size:11px;">—</span>`;
+    ? `<a class="btn-contact" href="${mailto}" onclick="onContact(${p.id})" title="发邮件">${mailIcon}</a>`
+    : `<span class="btn-contact is-off" title="这个客户还没有邮箱，无法发信">${mailIcon}</span>`;
   const hydrateBtn = (p.handles && p.handles.length > 0)
     ? `<button class="btn-hydrate" onclick="onHydrate(${p.id}, this)" title="从平台拉取真实数据"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg></button>`
     : '';
@@ -623,7 +627,7 @@ function renderRow(p) {
       <td><span style="font-size:12px; color:var(--text); font-weight:600;">${p.max_followers != null ? fmt(p.max_followers) : '<span style="color:var(--text2); font-weight:400;">—</span>'}</span></td>
       <td><select onchange="onChange(${p.id}, 'status', this)">${statusOpts}</select></td>
       <td><select onchange="onChange(${p.id}, 'intent', this)">${intentOptionsHtml(p.intent)}</select></td>
-      <td><input type="text" value="${escapeHtml(tagsStr)}" placeholder="逗号分隔" onblur="onChange(${p.id}, 'tags', this)"></td>
+      <td><input type="text" class="tags-input" value="${escapeHtml(tagsStr)}" placeholder="逗号分隔" onblur="onChange(${p.id}, 'tags', this)"></td>
       <td>${ownerCell}</td>
       <td class="relative-time">${relTime(p.last_contacted_at)}</td>
       <td class="relative-time">${relTime(p.created_at)}</td>
@@ -797,6 +801,8 @@ async function openHandlesDrawer(pid) {
 async function renderHandlesDrawer() {
   const pid = _handlesDrawerPid;
   if (pid == null) return;
+  const body = document.getElementById('handlesDrawerBody');
+  body.innerHTML = drawerSkeleton();
   let person = null;
   try {
     const r = await fetch(`/api/people/${pid}`);
@@ -804,10 +810,11 @@ async function renderHandlesDrawer() {
     person = d.person;
   } catch (e) {}
   if (!person) {
-    document.getElementById('handlesDrawerBody').innerHTML = '<div class="error-msg">无法加载客户信息</div>';
+    body.innerHTML = '<div class="error-msg">无法加载客户信息</div>';
     return;
   }
-  document.getElementById('handlesDrawerSubtitle').textContent = `客户 ID ${person.id}`;
+  document.getElementById('handlesDrawerSubtitle').textContent =
+    `${person.full_name || '(未命名)'} · 客户 #${person.id}`;
 
   const handles = person.handles || [];
   const handlesHtml = handles.length
@@ -816,91 +823,109 @@ async function renderHandlesDrawer() {
         return `<div class="h-row">
           <span class="ph ${h.platform}">${h.platform}</span>
           <span class="uname">@${escapeHtml(h.username)}</span>
-          ${isPlaceholder ? '<span class="placeholder">占位</span>' : `<span class="meta">${fmt(h.follower_count)} 粉丝</span>`}
-          <button class="x-del" onclick="onDeleteHandle(${h.id}, '${escapeHtml(h.username)}')">✕ 删除</button>
+          ${isPlaceholder
+            ? '<span class="placeholder">占位</span>'
+            : `<span class="meta">${fmt(h.follower_count)} 粉丝</span>`}
+          <button class="x-del" data-del-handle="${h.id}" data-handle-name="${escapeHtml(h.username)}" title="移除这个账号">✕</button>
         </div>`;
       }).join('')
-    : '<div class="empty">还没有挂任何平台账号</div>';
+    : '<div class="empty" style="padding:16px">还没有挂任何平台账号</div>';
 
   const isAdmin = window.CURRENT_USER && window.CURRENT_USER.role === 'admin';
-  const dangerBtn = isAdmin
-    ? `<div style="margin-top:24px; padding-top:14px; border-top: 1px dashed var(--border);">
-         <button class="btn btn-ghost btn-sm" style="color:var(--red); border-color:var(--red);"
-                 onclick="onDeletePerson(${person.id}, ${JSON.stringify(person.full_name || '').replace(/"/g, '&quot;')})">
-           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg> 删除客户（永久，不可恢复）
-         </button>
-         <div style="font-size:11px; color:var(--text2); margin-top:6px;">
-           只在录入错了 / 测试残留时用。想"以后避开"请走『不适合』按钮。
-         </div>
-       </div>`
-    : '';
-  document.getElementById('handlesDrawerBody').innerHTML = `
-    <div class="add-box" style="margin-bottom:14px;">
-      <div style="font-size:13px; font-weight:600; margin-bottom:8px;">基础信息（抓回来的常常不准，可直接改）</div>
-      <label style="display:block; margin-bottom:8px; font-size:12px; color:var(--text2);">
-        姓名
-        <input type="text" id="drawerName" value="${escapeHtml(person.full_name || '')}"
-               placeholder="(未命名)" style="margin-top:4px; width:100%;"
-               onblur="onDrawerFieldBlur('full_name', this)">
-      </label>
-      <label style="display:block; font-size:12px; color:var(--text2);">
-        邮箱
-        <input type="text" id="drawerEmail" value="${escapeHtml(person.email || '')}"
-               placeholder="someone@example.com" style="margin-top:4px; width:100%;"
-               onblur="onDrawerFieldBlur('email', this)">
-      </label>
-      <div id="drawerFieldMsg" style="font-size:11px; margin-top:6px; min-height:14px;"></div>
-    </div>
-    ${handlesHtml}
+  if (isAdmin) {
+    const foot = document.getElementById('handlesDrawerFoot');
+    foot.style.display = '';
+    foot.innerHTML = `
+      <button class="btn btn-ghost btn-sm btn-danger" onclick="onDeletePerson(${person.id}, ${JSON.stringify(person.full_name || '').replace(/"/g, '&quot;')})">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+        删除客户
+      </button>
+      <span class="dsec-hint" style="margin-left:8px;">只在录入错了时用；想以后避开这个人请用『不适合』。</span>`;
+  } else {
+    document.getElementById('handlesDrawerFoot').style.display = 'none';
+  }
 
-    <!-- Follow-up timeline + reminder controls -->
-    <div class="add-box" style="margin-top:14px;">
-      <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
-        <div style="font-size:13px; font-weight:600;">跟进记录</div>
-        <span id="followupCount" style="color:var(--text2); font-size:11px;"></span>
+  body.innerHTML = `
+    <div class="dsec">
+      <div class="dsec-title">基础信息</div>
+      <div class="panel">
+        <div class="field">
+          <span class="field-label">姓名</span>
+          <input type="text" id="drawerName" value="${escapeHtml(person.full_name || '')}"
+                 placeholder="(未命名)" onblur="onDrawerFieldBlur('full_name', this)">
+        </div>
+        <div class="field">
+          <span class="field-label">邮箱</span>
+          <input type="text" id="drawerEmail" value="${escapeHtml(person.email || '')}"
+                 placeholder="someone@example.com" onblur="onDrawerFieldBlur('email', this)">
+        </div>
+        <div id="drawerFieldMsg" class="form-msg" style="margin-top:8px;min-height:14px;"></div>
       </div>
-      <div style="display:flex; gap:6px; margin-bottom:8px;">
-        <input type="text" id="followupInput" placeholder="例：3 月 18 日电话沟通，对方对包邮政策最在意…"
+    </div>
+
+    <div class="dsec">
+      <div class="dsec-title">平台账号 <span class="count">${handles.length}</span></div>
+      ${handlesHtml}
+    </div>
+
+    <div class="dsec">
+      <div class="dsec-title">跟进记录 <span class="count" id="followupCount">0</span></div>
+      <div class="input-row" style="gap:6px; margin-bottom:10px;">
+        <input type="text" id="followupInput" placeholder="例：3 月 18 日电话沟通，对方最在意包邮政策…"
                style="flex:1;" onkeydown="if(event.key==='Enter') onAddFollowup()">
         <button class="btn btn-accent btn-sm" onclick="onAddFollowup()">＋ 添加</button>
       </div>
-      <div id="followupList" style="font-size:12px; max-height:200px; overflow-y:auto;"></div>
+      <div id="followupList" style="max-height:240px; overflow-y:auto;"></div>
     </div>
 
-    <div class="add-box" style="margin-top:10px;">
-      <div style="font-size:13px; font-weight:600; margin-bottom:8px;">设个提醒</div>
+    <div class="dsec">
+      <div class="dsec-title">设置提醒</div>
       <div class="input-row" style="gap:6px;">
-        <input type="datetime-local" id="reminderAt" style="flex:0 0 200px;">
+        <input type="datetime-local" id="reminderAt" style="flex:0 0 190px;">
         <input type="text" id="reminderContent" placeholder="例：跟进合作意向（可空）" style="flex:1;">
         <button class="btn btn-accent btn-sm" onclick="onAddReminder()">设提醒</button>
       </div>
-      <div id="reminderMsg" style="font-size:11px; color:var(--text2); margin-top:6px;"></div>
-      <div id="reminderList" style="font-size:12px; margin-top:8px;"></div>
+      <div id="reminderMsg" class="dsec-hint"></div>
+      <div id="reminderList" style="margin-top:8px;"></div>
     </div>
 
-    <div class="add-box">
-      <div style="font-size:13px; font-weight:600; margin-bottom:8px;">添加新账号</div>
+    <div class="dsec">
+      <div class="dsec-title">添加新账号</div>
       <div class="input-row" style="gap:8px;">
-        <select id="newHandlePlatform" style="width:120px;">
+        <select id="newHandlePlatform" style="width:130px;">
           <option value="instagram">Instagram</option>
           <option value="x">X (Twitter)</option>
           <option value="tiktok">TikTok</option>
         </select>
         <input type="text" id="newHandleUser" placeholder="用户名（不带 @）" style="flex:1;">
       </div>
-      <label style="margin-top:8px;">
-        <input type="checkbox" id="newHandleHydrate" checked> 立即抓取（走真 API，需消耗 token）
+      <label style="display:flex; align-items:center; gap:6px; margin-top:9px; font-size:12px; color:var(--text-2);">
+        <input type="checkbox" id="newHandleHydrate" checked> 立即抓取资料
       </label>
+      <div class="dsec-hint">抓取会走真实平台 API，消耗 token；不勾就先存占位账号，之后可单独补全。</div>
       <div class="btn-row" style="margin-top:10px;">
         <button class="btn btn-accent btn-sm" id="newHandleBtn" onclick="onAddHandle()">添加</button>
-        <span id="newHandleMsg" style="font-size:11px; color:var(--text2);"></span>
+        <span id="newHandleMsg" class="form-msg"></span>
       </div>
     </div>
-    ${dangerBtn}
   `;
   // Fill the new follow-up / reminder panels asynchronously.
   loadFollowups();
   loadReminders();
+  // 删除账号走事件绑定：用户名可能含引号，塞进 onclick 会拼坏 JS
+  body.querySelectorAll('[data-del-handle]').forEach(btn => {
+    btn.onclick = () => onDeleteHandle(Number(btn.dataset.delHandle), btn.dataset.handleName || '');
+  });
+}
+
+// 抽屉加载占位（与真实内容同形，避免"加载中…"文字闪一下）
+function drawerSkeleton() {
+  return `<div class="dsec"><div class="skeleton" style="height:110px;border-radius:var(--r)"></div></div>
+    <div class="dsec"><div class="skeleton sk-line" style="width:90px;margin-bottom:8px"></div>
+      <div class="skeleton" style="height:56px;border-radius:var(--r);margin-bottom:8px"></div>
+      <div class="skeleton" style="height:56px;border-radius:var(--r)"></div></div>
+    <div class="dsec"><div class="skeleton sk-line" style="width:90px;margin-bottom:8px"></div>
+      <div class="skeleton" style="height:120px;border-radius:var(--r)"></div></div>`;
 }
 
 async function onDeletePerson(pid, name) {
@@ -1022,15 +1047,13 @@ async function loadFollowups() {
     listEl.innerHTML = items.map(it => {
       const who = it.actor_display_name || it.actor_username || '?';
       const when = new Date(it.created_at * 1000).toLocaleString('zh-CN', {hour12: false});
-      return `
-        <div style="border-left:2px solid var(--accent); padding:6px 10px; margin-bottom:6px; background:var(--surface2); border-radius:0 6px 6px 0;">
-          <div style="display:flex; justify-content:space-between; color:var(--text2); font-size:11px;">
-            <span>${escapeHtml(who)} · ${escapeHtml(when)}</span>
-            <button class="btn-ghost" style="background:none; border:none; color:var(--text2); cursor:pointer; font-size:11px;"
-                    onclick="onDeleteFollowup(${it.id})">删</button>
-          </div>
-          <div style="white-space:pre-wrap; margin-top:2px;">${escapeHtml(it.content)}</div>
-        </div>`;
+      return `<div class="tl-item">
+        <div class="tl-meta">
+          <span>${escapeHtml(who)}</span><span>·</span><span>${escapeHtml(when)}</span>
+          <button class="tl-del" onclick="onDeleteFollowup(${it.id})" title="删除这条记录">删</button>
+        </div>
+        <div class="tl-text">${escapeHtml(it.content)}</div>
+      </div>`;
     }).join('');
   } catch (e) {
     listEl.innerHTML = `<div style="color:var(--red); font-size:11px;">加载失败：${escapeHtml(e.message)}</div>`;
@@ -1081,17 +1104,14 @@ async function loadReminders() {
       listEl.innerHTML = '';
       return;
     }
-    listEl.innerHTML = '<div style="color:var(--text2); margin-bottom:4px;">未完成的提醒：</div>' + items.map(it => {
+    listEl.innerHTML = items.map(it => {
       const when = new Date(it.remind_at * 1000).toLocaleString('zh-CN', {hour12: false});
       const due = it.remind_at <= Math.floor(Date.now()/1000);
-      const color = due ? 'var(--orange)' : 'var(--text2)';
-      return `
-        <div style="padding:4px 8px; background:var(--surface2); border-radius:6px; margin-bottom:4px;">
-          <span style="color:${color};">${due ? '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>' : '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>'}${escapeHtml(when)}</span>
-          ${it.content ? ' · ' + escapeHtml(it.content) : ''}
-          <button class="btn-ghost" style="background:none; border:none; color:var(--text2); cursor:pointer; font-size:11px; float:right;"
-                  onclick="onDismissReminder(${it.id})">完成</button>
-        </div>`;
+      return `<div class="rem-item">
+        <span class="rem-when" style="${due ? 'color:var(--orange);font-weight:600' : ''}">${due ? '⏰ ' : ''}${escapeHtml(when)}</span>
+        <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(it.content || '跟进提醒')}</span>
+        <button class="tl-del" onclick="onDismissReminder(${it.id})">完成</button>
+      </div>`;
     }).join('');
   } catch (e) {}
 }
@@ -1211,11 +1231,21 @@ async function onDrawerFieldBlur(field, el) {
 
 async function onDeleteHandle(accountId, displayName) {
   if (!confirm(`删除 @${displayName}？\n注意：如果这是该客户的最后一个账号且没有邮箱，客户记录会被一并删除。`)) return;
+  const pid = _handlesDrawerPid;
   try {
     const r = await fetch(`/api/db/account/${accountId}`, {method: 'DELETE'});
     const d = await r.json();
     if (!r.ok) {
       alert('删除失败：' + (d.error || ''));
+      return;
+    }
+    // The backend deletes the customer too when this was its last handle and
+    // there is no email; reopening the drawer would then show a load error.
+    const chk = await fetch(`/api/people/${pid}`);
+    if (!chk.ok) {
+      closeHandlesDrawer();
+      toast('客户已没有账号，记录一并删除', 'ok');
+      loadList();
       return;
     }
     await renderHandlesDrawer();
@@ -1288,6 +1318,9 @@ async function submitAddCustomer() {
 }
 
 document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && !document.getElementById('handlesDrawer').classList.contains('hidden')) {
+    closeHandlesDrawer(); return;
+  }
   if (e.key === 'Escape' && !document.getElementById('addModal').classList.contains('hidden')) {
     closeAddCustomer();
   }

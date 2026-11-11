@@ -7,6 +7,7 @@
   <p>填目标用户画像 → AI 自动想 ~8 个搜索词 → 在 IG/TikTok/X 三个平台跑搜索 → 自动去重并入库新账号。</p>
 </div>
 
+<div class="query-grid">
 <div class="card">
   <div class="card-header"><div class="h-badge">1</div><h2>目标用户画像</h2></div>
   <textarea id="descInput" rows="4" placeholder="只描述画像/品类/受众，AI 拿来生成搜索词。粉丝数、是否认证这类硬指标无法在此过滤。&#10;例：女性家庭健身博主，主打产后恢复训练，受众以美国/英国宝妈为主"></textarea>
@@ -21,9 +22,22 @@
     <label class="platform-filter"><input type="checkbox" class="plat-cb" value="x" checked> X</label>
   </div>
   <div class="btn-row">
-    <button class="btn btn-accent" id="runBtn" onclick="runQuery()">开始</button>
+    <button class="btn btn-accent" id="runBtn" onclick="runQuery()">开始搜索</button>
+    <span class="form-hint" style="margin-left:10px;">一次运行会消耗平台 API 配额，结果自动去重入库。</span>
   </div>
   <div class="loading" id="runLoading"><div class="spinner"></div><span id="runStatus">生成搜索词中…</span></div>
+</div>
+
+<aside class="card query-aside">
+  <div class="card-header"><div class="h-badge">?</div><h2>执行流程</h2></div>
+  <ol class="query-steps">
+    <li><b>读懂画像</b><span>AI 按品类、受众、语言拆出约 8 个搜索词。</span></li>
+    <li><b>三平台搜索</b><span>拿搜索词在选中的平台跑用户搜索。</span></li>
+    <li><b>去重</b><span>已在库的账号、同人不同账号都会被跳过。</span></li>
+    <li><b>入库</b><span>剩下的拉取资料后建账号 + 客户记录。</span></li>
+  </ol>
+  <div class="dsec-hint">粉丝数、认证状态这类硬指标不参与 AI 搜索；想要精确筛选，先用「相似发现」再按粉丝数排序。</div>
+</aside>
 </div>
 
 <div class="card hidden" id="resultsCard">

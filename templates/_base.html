@@ -288,7 +288,7 @@ function renderAccount(a, opts={}) {
   const initial = ((a.username || a.full_name || '?') + '').trim().slice(0, 1).toUpperCase() || '?';
   const avatar = `<div class="avatar">${escapeHtml(initial)}${
     a.profile_pic_url
-      ? `<img src="${a.profile_pic_url}" alt="" loading="lazy" decoding="async" onerror="this.remove()">`
+      ? `<img src="${a.profile_pic_url}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onload="this.classList.add('is-loaded')" onerror="this.remove()">`
       : ''
   }</div>`;
   return `<div class="result-item" data-id="${a.id}">

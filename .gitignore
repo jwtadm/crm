@@ -30,3 +30,6 @@ reports/
 tests/.scout-test.db
 tests/.scout-test.db-*
 .mimosa/
+
+# ZCode tooling state (plans, screenshots)
+.zcode/

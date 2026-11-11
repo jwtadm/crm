@@ -690,69 +690,45 @@ select:disabled {
    .crm-table input rule does not (bold name, muted notes, mono email). */
 .crm-table .name-input { font-weight: 600; color: var(--text); }
 .crm-table .notes-input { color: var(--text-2); }
-.crm-table .email-input { font-family: var(--mono); font-size: 11px; color: var(--text-2); }
 
-/* ─── People page: handles drawer ───────────────────────────── */
-
-#handlesDrawer {
-  position: fixed;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: min(460px, 94vw);
-  background: var(--surface);
-  border-left: 1px solid var(--border);
-  padding: 20px;
-  overflow-y: auto;
-  z-index: 200;
-  box-shadow: var(--shadow-lg);
-}
-
-#handlesDrawer .h-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 9px 12px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--r);
-  margin-bottom: 6px;
+/* Tag cell: an always-on white input made every row look like a form. It is
+   now a quiet text cell that turns into an input on hover / focus. */
+.crm-table .tags-input {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-2);
   font-size: 12px;
 }
-
-#handlesDrawer .h-row .ph {
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: .03em;
-  padding: 1px 6px;
-  border-radius: var(--r-sm);
+.crm-table .tags-input::placeholder { color: transparent; }
+.crm-table .tags-input:hover {
+  background: var(--surface);
+  border-color: var(--border);
 }
+.crm-table .tags-input:hover::placeholder { color: var(--text-3); }
+.crm-table .tags-input:focus {
+  background: var(--surface);
+  border-color: var(--accent);
+  color: var(--text);
+}
+.crm-table .tags-input:focus::placeholder { color: var(--text-3); }
 
-#handlesDrawer .h-row .ph.instagram { background: var(--pink-light); color: var(--pink); }
-#handlesDrawer .h-row .ph.x { background: var(--blue-light); color: var(--blue); }
-#handlesDrawer .h-row .ph.tiktok { background: var(--accent-light); color: var(--accent); }
-
-#handlesDrawer .h-row .uname { flex: 1; font-family: var(--mono); }
-#handlesDrawer .h-row .meta { font-size: 10px; color: var(--text-3); }
-#handlesDrawer .h-row .placeholder { color: var(--orange); font-size: 10px; }
-
-#handlesDrawer .h-row .x-del {
-  padding: 3px 9px;
-  font-size: 11px;
+/* “no email” state of the contact action: same geometry, clearly disabled */
+.crm-table .btn-contact.is-off {
   background: transparent;
   color: var(--text-3);
-  border: 1px solid var(--border);
-  border-radius: var(--r-sm);
-  cursor: pointer;
-  transition: all .15s;
+  opacity: .45;
+  cursor: not-allowed;
 }
+.crm-table .btn-contact.is-off:hover {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-3);
+}
+.crm-table .email-input { font-family: var(--mono); font-size: 11px; color: var(--text-2); }
 
-#handlesDrawer .h-row .x-del:hover {
-  border-color: var(--red);
-  color: var(--red);
-  background: var(--red-light);
-}
+/* ─── People page: handles drawer ─────────────────────────────
+   The panel itself is `.drawer` (below); the row styles live with the rest of
+   the drawer system further down, so only the legacy `.add-box` remains here. */
 
 #handlesDrawer .add-box {
   background: var(--surface-2);
@@ -898,10 +874,15 @@ select:disabled {
   height: 100%;
   object-fit: cover;
   border-radius: 50%;
-  background: var(--surface-2);
-  /* covers the initials while it loads; on error the element is removed */
+  /* Initials stay visible until the picture has actually decoded. An opaque
+     background here (or an always-visible img) hid them for the whole slow /
+     failed request, which is what made rows look like empty grey circles. */
+  opacity: 0;
+  transition: opacity .18s ease;
   z-index: 1;
 }
+
+.avatar img.is-loaded { opacity: 1; }
 
 .result-item .info { flex: 1; min-width: 0; }
 
@@ -1690,3 +1671,288 @@ select:disabled {
   color: var(--orange);
   border: 1px solid var(--orange);
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   Drawer (side panel) — shared by 平台账号详情 and 客户账号/跟进
+   ═══════════════════════════════════════════════════════════════ */
+
+.drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(480px, 96vw);
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  box-shadow: var(--shadow-lg);
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  animation: drawer-in .2s cubic-bezier(.16,1,.3,1);
+}
+
+.drawer.hidden { display: none; }
+
+@keyframes drawer-in {
+  from { transform: translateX(16px); opacity: .6 }
+  to   { transform: none; opacity: 1 }
+}
+
+@media (prefers-reduced-motion: reduce) { .drawer { animation: none } }
+
+.drawer-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.drawer-head .drawer-head-main { flex: 1; min-width: 0; }
+.drawer-title { font-size: 15px; font-weight: 600; color: var(--text); margin: 0; }
+.drawer-sub { font-size: 11.5px; color: var(--text-3); margin-top: 3px; font-family: var(--mono); }
+
+.drawer-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px 20px 24px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.drawer-foot {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
+}
+/* Long hints must wrap inside the panel instead of running past its edge. */
+.drawer-foot > .dsec-hint { margin: 0; flex: 1 1 200px; min-width: 0; }
+
+.drawer-close {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-3);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  transition: all .15s;
+}
+.drawer-close:hover { color: var(--red); border-color: var(--red); background: var(--red-light); }
+
+/* Section inside a drawer */
+.dsec { margin-bottom: 22px; }
+.dsec:last-child { margin-bottom: 4px; }
+/* A hairline between sections is what makes a long drawer scannable; without
+   it every section reads as the same grey block. */
+.dsec + .dsec {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.dsec-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .01em;
+  color: var(--text-2);
+  margin-bottom: 10px;
+}
+
+.dsec-title .count {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--text-2);
+  background: var(--surface-3);
+  padding: 1px 7px;
+  border-radius: var(--r-full);
+}
+
+.dsec-hint { font-size: 11px; color: var(--text-3); margin-top: 6px; line-height: 1.55; }
+
+.panel {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 14px;
+}
+
+.panel + .panel { margin-top: 10px; }
+
+/* Labelled field row inside a drawer */
+.field { display: grid; grid-template-columns: 68px 1fr; align-items: center; gap: 10px; }
+.field + .field { margin-top: 9px; }
+.field > .field-label { font-size: 12px; color: var(--text-2); }
+.field > input, .field > select, .field > textarea { width: 100%; }
+/* Multi-line control: keep the label in its column so the textarea lines up
+   with the inputs above it instead of jutting 78px to the left. */
+.field.stack { align-items: start; }
+.field.stack > .field-label { padding-top: 9px; }
+
+/* The account card at the top of the detail drawer */
+.drawer-acct {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  background: var(--surface);
+}
+.drawer-acct .avatar { width: 44px; height: 44px; font-size: 17px; }
+.drawer-acct .da-main { flex: 1; min-width: 0; }
+.drawer-acct .da-line1 {
+  display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+  font-size: 13px; line-height: 1.5;
+}
+.drawer-acct .da-handle { font-family: var(--mono); font-weight: 600; color: var(--text); }
+.drawer-acct .da-name { color: var(--text-2); }
+.drawer-acct .da-line2 { margin-top: 3px; font-size: 11.5px; color: var(--text-3); }
+.drawer-acct .da-line2 b { color: var(--text-2); }
+
+/* Timeline entries in the follow-up panel */
+.tl-item {
+  position: relative;
+  padding: 0 0 12px 14px;
+  border-left: 2px solid var(--border);
+  margin-left: 3px;
+}
+.tl-item:last-child { padding-bottom: 0; border-left-color: transparent; }
+.tl-item::before {
+  content: '';
+  position: absolute;
+  left: -5px; top: 3px;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  border: 2px solid var(--surface-2);
+}
+.tl-meta { font-size: 10.5px; color: var(--text-3); display: flex; gap: 8px; align-items: center; }
+.tl-text { font-size: 12.5px; color: var(--text); margin-top: 2px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
+.tl-del {
+  margin-left: auto; font-size: 10.5px; color: var(--text-3);
+  background: none; border: none; cursor: pointer; padding: 0 2px;
+}
+.tl-del:hover { color: var(--red); }
+
+/* Datalist-style reminder rows */
+.rem-item {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 11.5px; color: var(--text-2);
+  padding: 5px 0;
+  border-bottom: 1px dashed var(--border);
+}
+.rem-item:last-child { border-bottom: none; }
+.rem-when { font-family: var(--mono); color: var(--text-3); font-size: 11px; }
+
+/* Handle rows inside the customer drawer (kept: JS still emits these classes) */
+#handlesDrawer .h-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+#handlesDrawer .h-row:last-child { margin-bottom: 0; }
+#handlesDrawer .h-row .ph {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  padding: 1px 6px;
+  border-radius: var(--r-sm);
+  background: var(--surface-3);
+  color: var(--text-2);
+}
+#handlesDrawer .h-row .ph.instagram { background: var(--pink-light); color: var(--pink); }
+#handlesDrawer .h-row .ph.x { background: var(--blue-light); color: var(--blue); }
+#handlesDrawer .h-row .ph.tiktok { background: var(--accent-light); color: var(--accent); }
+#handlesDrawer .h-row .uname { flex: 1; font-family: var(--mono); color: var(--text); }
+#handlesDrawer .h-row .meta { font-size: 10.5px; color: var(--text-3); }
+#handlesDrawer .h-row .placeholder {
+  font-size: 10px; color: var(--orange);
+  background: var(--orange-light); padding: 1px 6px; border-radius: var(--r-full);
+}
+#handlesDrawer .h-row .x-del {
+  padding: 2px 7px; font-size: 11px; line-height: 1.5;
+  background: transparent; color: var(--text-3);
+  border: 1px solid var(--border); border-radius: var(--r-sm); cursor: pointer;
+  transition: all .15s;
+}
+#handlesDrawer .h-row .x-del:hover { color: var(--red); border-color: var(--red); background: var(--red-light); }
+
+/* ─── AI Query page ───────────────────────────────────────────
+   The form used to sit alone on a 1440px canvas with two thirds of the page
+   empty. Pair it with a short pipeline explainer so the page reads as a tool
+   rather than an unfinished form. */
+.query-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 16px;
+  align-items: start;
+}
+@media (max-width: 1100px) {
+  .query-grid { grid-template-columns: 1fr; }
+}
+.query-aside .card-header { margin-bottom: 12px; }
+.query-steps {
+  list-style: none;
+  counter-reset: qs;
+  margin: 0;
+  padding: 0;
+}
+.query-steps li {
+  counter-increment: qs;
+  position: relative;
+  padding: 0 0 14px 30px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+.query-steps li::before {
+  content: counter(qs);
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--accent-light);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.query-steps li::after {
+  content: '';
+  position: absolute;
+  left: 9px;
+  top: 24px;
+  bottom: 4px;
+  width: 1px;
+  background: var(--border);
+}
+.query-steps li:last-child { padding-bottom: 0; }
+.query-steps li:last-child::after { display: none; }
+.query-steps b { display: block; color: var(--text); font-weight: 600; margin-bottom: 2px; }
+.query-steps span { color: var(--text-3); line-height: 1.55; }

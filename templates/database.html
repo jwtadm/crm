@@ -34,12 +34,16 @@
 </div>
 
 <!-- 详情抽屉 -->
-<div id="drawer" class="hidden" style="position:fixed; top:0; right:0; bottom:0; width:420px; background: var(--surface); border-left: 1px solid var(--border); padding: 20px; overflow-y: auto; z-index: 200; box-shadow: -4px 0 12px rgba(0,0,0,0.3);">
-  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 16px;">
-    <h2 style="font-size:16px;">账号详情</h2>
-    <button class="btn btn-ghost btn-sm" onclick="closeDrawer()">✕ 关闭</button>
+<div id="drawer" class="drawer hidden">
+  <div class="drawer-head">
+    <div class="drawer-head-main">
+      <h2 class="drawer-title">账号详情</h2>
+      <div class="drawer-sub" id="drawerSub"></div>
+    </div>
+    <button class="drawer-close" onclick="closeDrawer()" title="关闭 (Esc)">✕</button>
   </div>
-  <div id="drawerBody"></div>
+  <div class="drawer-body" id="drawerBody"></div>
+  <div class="drawer-foot" id="drawerFoot" style="display:none;"></div>
 </div>
 
 {% endblock %}
@@ -117,7 +121,7 @@ function renderAccountRow(a, showScore) {
   const initial = ((a.username || a.full_name || '?') + '').trim().slice(0, 1).toUpperCase() || '?';
   const avatar = '<div class="avatar">' + escapeHtml(initial) + '' +
     (a.profile_pic_url
-      ? '<img src="' + a.profile_pic_url + '" alt="" loading="lazy" decoding="async" onerror="this.remove()">'
+      ? '<img src="' + a.profile_pic_url + '" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onload="this.classList.add(\'is-loaded\')" onerror="this.remove()">'
       : '') + '</div>';
   const verified = a.is_verified ? '<span class="check" title="平台认证">&#10003;</span>' : '';
   const cat = a.category ? '<span class="cat-tag">' + escapeHtml(a.category) + '</span>' : '';
@@ -218,8 +222,11 @@ function initDbScroll() {
 }
 
 async function openDrawer(accountId) {
-  document.getElementById('drawer').classList.remove('hidden');
-  document.getElementById('drawerBody').innerHTML = '<div class="empty">加载中…</div>';
+  const drawer = document.getElementById('drawer');
+  drawer.classList.remove('hidden');
+  document.getElementById('drawerSub').textContent = '';
+  document.getElementById('drawerFoot').style.display = 'none';
+  document.getElementById('drawerBody').innerHTML = drawerSkeleton();
   try {
     const r = await fetch(`/api/db/account/${accountId}`);
     const d = await r.json();
@@ -228,37 +235,91 @@ async function openDrawer(accountId) {
     const p = d.person || {};
     const siblings = d.other_accounts_for_person || [];
     const tags = (() => { try { return JSON.parse(p.tags || '[]'); } catch { return []; } })();
+    document.getElementById('drawerSub').textContent =
+      `${a.platform} · id ${a.id}` + (p.id ? ` · 客户 #${p.id}` : '');
+
+    const meta = [];
+    if (a.follower_count != null) meta.push(`<b>${fmt(a.follower_count)}</b> 粉丝`);
+    if (a.following_count != null) meta.push(`<b>${fmt(a.following_count)}</b> 关注`);
+    if (a.post_count != null) meta.push(`<b>${fmt(a.post_count)}</b> 帖子`);
+
     document.getElementById('drawerBody').innerHTML = `
-      ${renderAccount(a)}
-      <div style="margin: 16px 0 10px; font-size:13px; font-weight:600; color: var(--text2);">人物档案（CRM）</div>
-      <div style="background: var(--surface2); border-radius: 8px; padding: 12px; font-size: 13px;">
-        <div style="margin-bottom:8px;"><span style="color:var(--text2);">邮箱：</span> ${escapeHtml(p.email || '（无 — 按平台 ID 标识）')}</div>
-        <div style="margin-bottom:8px;"><span style="color:var(--text2);">状态：</span>
-          <select id="crmStatus" style="padding:5px 8px; background: var(--surface); border:1px solid var(--border); color:var(--text); border-radius:6px; font-size:12px;">
-            ${STATUS_LIST.map(s => `<option value="${s}" ${s===p.status?'selected':''}>${STATUS_LABEL[s]}</option>`).join('')}
-          </select>
+      <div class="dsec">
+        <div class="drawer-acct">
+          <div class="avatar">${escapeHtml(((a.username || '?') + '').slice(0,1).toUpperCase())}${a.profile_pic_url ? `<img src="${a.profile_pic_url}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onload="this.classList.add('is-loaded')" onerror="this.remove()">` : ''}</div>
+          <div class="da-main">
+            <div class="da-line1">
+              ${platformTag(a.platform)}
+              <span class="da-handle">@${escapeHtml(a.username || '')}</span>
+              ${a.is_verified ? '<span class="check" title="平台认证">&#10003;</span>' : ''}
+              <span class="da-name">${escapeHtml(a.full_name || '')}</span>
+            </div>
+            <div class="da-line2">
+              ${meta.join(' · ') || '暂无统计数据'}
+              ${a.category ? ` · ${escapeHtml(a.category)}` : ''}
+            </div>
+            ${a.biography ? `<div class="da-line2" style="margin-top:4px">${escapeHtml(a.biography.split('\n').join(' · '))}</div>` : ''}
+            ${a.source ? `<div class="da-line2" style="margin-top:2px;font-style:italic">来源：${escapeHtml(a.source)}</div>` : ''}
+          </div>
         </div>
-        <div style="margin-bottom:8px;"><span style="color:var(--text2);">标签：</span>
-          <input type="text" id="crmTags" value="${escapeHtml(tags.join(', '))}" placeholder="逗号分隔" style="width: 70%;">
-        </div>
-        <div style="margin-bottom:8px;"><span style="color:var(--text2);">负责人：</span>
-          <input type="text" id="crmOwner" value="${escapeHtml(p.owner || '')}" style="width: 70%;">
-        </div>
-        <div style="margin-bottom:8px;"><span style="color:var(--text2);">备注：</span>
-          <textarea id="crmNotes" rows="3" style="margin-top: 4px;">${escapeHtml(p.notes || '')}</textarea>
-        </div>
-        <button class="btn btn-accent btn-sm" onclick="savePerson(${p.id})">保存</button>
-        <span id="crmSaveStatus" style="font-size:11px; color:var(--green); margin-left:8px;"></span>
       </div>
-      ${siblings.length ? `<div style="margin: 16px 0 8px; font-size:13px; font-weight:600; color: var(--text2);">同一人物的其他平台账号（${siblings.length}）</div>
-        ${siblings.map(s => renderAccount(s)).join('')}` : ''}
-      <div style="margin-top: 20px;">
-        <button class="btn btn-ghost btn-sm" style="color:var(--red); border-color:var(--red);" onclick="deleteAccount(${a.id})">删除此账号</button>
+
+      <div class="dsec">
+        <div class="dsec-title">人物档案（CRM）</div>
+        ${p.id ? `<div class="panel">
+          <div class="field">
+            <span class="field-label">邮箱</span>
+            <span class="cell-email">${escapeHtml(p.email || '（无 — 按平台 ID 标识）')}</span>
+          </div>
+          <div class="field">
+            <span class="field-label">状态</span>
+            <select id="crmStatus">
+              ${STATUS_LIST.map(s2 => `<option value="${s2}" ${s2 === p.status ? 'selected' : ''}>${STATUS_LABEL[s2]}</option>`).join('')}
+            </select>
+          </div>
+          <div class="field">
+            <span class="field-label">标签</span>
+            <input type="text" id="crmTags" value="${escapeHtml(tags.join(', '))}" placeholder="逗号分隔">
+          </div>
+          <div class="field">
+            <span class="field-label">负责人</span>
+            <input type="text" id="crmOwner" value="${escapeHtml(p.owner || '')}" placeholder="负责人姓名">
+          </div>
+          <div class="field stack">
+            <span class="field-label">备注</span>
+            <textarea id="crmNotes" rows="3" placeholder="联系进度 / 对方在意什么">${escapeHtml(p.notes || '')}</textarea>
+          </div>
+          <div style="display:flex; align-items:center; gap:10px; margin-top:12px;">
+            <button class="btn btn-accent btn-sm" onclick="savePerson(${p.id})">保存</button>
+            <span id="crmSaveStatus" class="form-msg"></span>
+          </div>
+        </div>` : '<div class="dsec-hint">这条账号还没有关联的客户记录，暂时不能编辑档案。</div>'}
       </div>
+
+      ${siblings.length ? `<div class="dsec">
+        <div class="dsec-title">同一人物的其他账号 <span class="count">${siblings.length}</span></div>
+        ${siblings.map(s2 => renderAccountRow(s2, false)).join('')}
+      </div>` : ''}
     `;
+
+    const foot = document.getElementById('drawerFoot');
+    foot.style.display = '';
+    foot.innerHTML = `<button class="btn btn-ghost btn-sm btn-danger" onclick="deleteAccount(${a.id})">删除此账号</button>
+      <span class="dsec-hint" style="margin-left:10px;">只删这条平台账号；客户本身保留。</span>`;
   } catch (e) {
     document.getElementById('drawerBody').innerHTML = `<div class="error-msg">${escapeHtml(e.message)}</div>`;
   }
+}
+
+// 抽屉加载占位（与真实内容同形，避免"加载中…"文字闪一下）
+function drawerSkeleton() {
+  return `<div class="dsec">
+      <div class="skeleton" style="height:72px;border-radius:var(--r)"></div>
+    </div>
+    <div class="dsec">
+      <div class="skeleton sk-line" style="width:120px;margin-bottom:10px"></div>
+      <div class="skeleton" style="height:200px;border-radius:var(--r)"></div>
+    </div>`;
 }
 function closeDrawer() { document.getElementById('drawer').classList.add('hidden'); }
 
@@ -374,6 +435,11 @@ async function clearDb() {
   } catch (e) { alert('清空失败：' + e.message); }
 }
 
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && !document.getElementById('drawer').classList.contains('hidden')) {
+    closeDrawer();
+  }
+});
 document.querySelectorAll('.plat-cb').forEach(cb => cb.addEventListener('change', loadList));
 initDbScroll();
 loadList();
