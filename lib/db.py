@@ -88,8 +88,10 @@ CREATE INDEX IF NOT EXISTS idx_people_updated_at ON people(updated_at);
 -- idx_people_list_sort below, so the default sort already had an index.
 CREATE INDEX IF NOT EXISTS idx_pa_follower ON platform_accounts(follower_count);
 -- Composite sort index: eliminates 29k-row temp B-tree sort on /api/db/list.
--- Matches ORDER BY follower_count DESC, updated_at DESC with platform IN (...) filter.
-CREATE INDEX IF NOT EXISTS idx_pa_list_sort ON platform_accounts(platform, follower_count DESC, updated_at DESC);
+-- Matches ORDER BY follower_count DESC, updated_at DESC, id DESC with a
+-- platform filter. The id term makes it a pure index walk (no tie-break sort);
+-- the old 3-column version is dropped in _apply_migrations.
+CREATE INDEX IF NOT EXISTS idx_pa_list_sort_id ON platform_accounts(platform, follower_count DESC, updated_at DESC, id DESC);
 -- Composite sort index for list_people default ORDER BY last_contacted_at DESC, updated_at DESC.
 CREATE INDEX IF NOT EXISTS idx_people_list_sort ON people(last_contacted_at DESC, updated_at DESC);
 -- idx_email_log_person / idx_followup_actor are created in _apply_migrations:
@@ -295,6 +297,8 @@ def _apply_migrations(c: sqlite3.Connection) -> None:
     c.execute("DROP INDEX IF EXISTS idx_people_email")          # UNIQUE(email) auto-index covers it
     c.execute("DROP INDEX IF EXISTS idx_people_last_contacted")  # prefix of idx_people_list_sort
     c.execute("DROP INDEX IF EXISTS idx_pa_person")              # prefix of idx_pa_person_cover
+    # Superseded by idx_pa_list_sort_id (same columns + the id tie-break).
+    c.execute("DROP INDEX IF EXISTS idx_pa_list_sort")
 
     # --- SSO apps (signed-link auto login) ---
     # Secrets are derived (see lib/sso.py), so only a random salt is stored.
@@ -684,6 +688,13 @@ _ACCOUNT_LIGHT_COLS = (
     "created_at, updated_at, is_rejected, rejection_reason, rejected_by, rejected_at"
 )
 
+# Same list, every column qualified with the pa. alias. Required when the query
+# joins people: unqualified `full_name` / `email` are ambiguous there and SQLite
+# rejects the whole statement.
+_ACCOUNT_LIGHT_COLS_PA = ", ".join(
+    f"pa.{c.strip()}" for c in _ACCOUNT_LIGHT_COLS.split(",")
+)
+
 
 def list_accounts(
     c: sqlite3.Connection,
@@ -704,35 +715,66 @@ def list_accounts(
     """
     cols = "pa.*" if (include_heavy and statuses) else \
            "*" if include_heavy else \
-           f"pa.{_ACCOUNT_LIGHT_COLS}" if statuses else _ACCOUNT_LIGHT_COLS
+           _ACCOUNT_LIGHT_COLS_PA if statuses else _ACCOUNT_LIGHT_COLS
     if statuses:
         from_clause = "platform_accounts pa JOIN people p ON p.id = pa.person_id"
         col = lambda name: f"pa.{name}"
     else:
         from_clause = "platform_accounts"
         col = lambda name: name
-    where = []
-    args: list = []
-    if platforms:
-        where.append(f"{col('platform')} IN ({','.join(['?']*len(platforms))})")
-        args.extend(platforms)
+
+    base_where = []
+    base_args: list = []
     if text:
         like = f"%{text}%"
-        where.append(f"({col('username')} LIKE ? OR {col('full_name')} LIKE ? OR "
-                     f"{col('biography')} LIKE ? OR {col('category')} LIKE ?)")
-        args.extend([like, like, like, like])
+        base_where.append(f"({col('username')} LIKE ? OR {col('full_name')} LIKE ? OR "
+                          f"{col('biography')} LIKE ? OR {col('category')} LIKE ?)")
+        base_args.extend([like, like, like, like])
     if statuses:
-        where.append(f"p.status IN ({','.join(['?']*len(statuses))})")
-        args.extend(statuses)
-    where_sql = (" WHERE " + " AND ".join(where)) if where else ""
+        base_where.append(f"p.status IN ({','.join(['?']*len(statuses))})")
+        base_args.extend(statuses)
+
     # id is the final sort key so `LIMIT/OFFSET` paging is stable — without a
     # unique tie-break two rows with equal follower_count+updated_at can swap
     # between pages and one of them never gets shown.
+    inner_order = (f"ORDER BY {col('follower_count')} DESC, {col('updated_at')} DESC, "
+                   f"{col('id')} DESC")
+    outer_order = "ORDER BY follower_count DESC, updated_at DESC, id DESC"
+
+    plats = list(dict.fromkeys(platforms or []))
+    if len(plats) <= 1:
+        where = list(base_where)
+        args = list(base_args)
+        if plats:
+            where.insert(0, f"{col('platform')} = ?")
+            args.insert(0, plats[0])
+        where_sql = (" WHERE " + " AND ".join(where)) if where else ""
+        return c.execute(
+            f"SELECT {cols} FROM {from_clause}{where_sql} {inner_order} LIMIT ? OFFSET ?",
+            [*args, limit, offset],
+        ).fetchall()
+
+    # Multiple platforms: `platform IN (...)` forces SQLite to sort every
+    # matching row (45k rows ≈ 650ms on the production box) because it cannot
+    # merge the per-platform index ranges. Taking offset+limit rows per
+    # platform and mergesorting that small union returns the identical rows in
+    # the identical order in ~5ms. Each part must be a derived table: a
+    # compound SELECT only allows one ORDER BY, at the very end.
+    part = (f"SELECT * FROM (SELECT {cols} FROM {from_clause} "
+            f"WHERE {col('platform')} = ?"
+            + ((" AND " + " AND ".join(base_where)) if base_where else "")
+            + f" {inner_order} LIMIT ?)")
+    union = " UNION ALL ".join([part] * len(plats))
+    args = []
+    per_plat = offset + limit
+    for p in plats:
+        args.append(p)
+        args.extend(base_args)
+        args.append(per_plat)
+    args.extend([limit, offset])
     return c.execute(
-        f"SELECT {cols} FROM {from_clause}{where_sql} "
-        f"ORDER BY {col('follower_count')} DESC, {col('updated_at')} DESC, "
-        f"{col('id')} DESC LIMIT ? OFFSET ?",
-        [*args, limit, offset],
+        f"SELECT * FROM ({union}) {outer_order} LIMIT ? OFFSET ?",
+        args,
     ).fetchall()
 
 
