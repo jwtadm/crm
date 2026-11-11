@@ -398,6 +398,203 @@ def api_auth_change_password():
     return jsonify({"ok": True})
 
 
+# ---------- API keys + auto-login ----------
+# Flow: a trusted backend holds an API key (created by an admin here), calls
+# POST /api/auth/auto_login with it, receives a one-time login_url, and sends
+# the user's browser there. The key never appears in a URL, and the ticket it
+# mints is single-use and expires in 60 seconds.
+
+AUTO_LOGIN_TICKET_TTL = 60
+
+
+def _client_ip() -> str:
+    return (request.headers.get("X-Forwarded-For", request.remote_addr or "")
+            .split(",")[0].strip())
+
+
+def _safe_next(value: str | None) -> str:
+    """Only same-origin absolute paths — blocks //evil and /\\evil redirects."""
+    v = (value or "").strip()
+    if not v.startswith("/") or v[1:2] in ("/", "\\"):
+        return ""
+    return v[:200]
+
+
+def _bearer_token() -> str:
+    raw = request.headers.get("Authorization", "")
+    if raw[:7].lower() == "bearer ":
+        return raw[7:].strip()
+    return ""
+
+
+@app.route("/api/auth/auto_login", methods=["POST"])
+def api_auth_auto_login():
+    """Exchange an API key + username for a one-time login URL.
+
+    Body: {"username": "alice", "next": "/people" (optional)}
+    Auth: Authorization: Bearer <api key>
+    """
+    ip = _client_ip()
+    token = _bearer_token()
+    if not token:
+        return jsonify({"error": "missing_api_key"}), 401
+
+    key = db.get_api_key_by_hash(auth.hash_api_key(token))
+    if not key or not key["is_active"]:
+        return jsonify({"error": "invalid_api_key"}), 401
+    if key["expires_at"] and key["expires_at"] <= int(time.time()):
+        return jsonify({"error": "key_expired"}), 401
+    if not auth.key_allows_ip(key, ip):
+        audit.log(None, "auto_login.denied", None,
+                  {"key": key["key_prefix"], "ip": ip, "reason": "ip_not_allowed"})
+        return jsonify({"error": "ip_not_allowed"}), 403
+    if not auth.rate_limit("auto_login_key", str(key["id"]), max_hits=60, window_seconds=60):
+        return jsonify({"error": "rate_limited"}), 429
+    if not auth.rate_limit("auto_login_ip", ip, max_hits=30, window_seconds=60):
+        return jsonify({"error": "rate_limited"}), 429
+
+    payload = request.json or {}
+    username = (payload.get("username") or "").strip()
+    if not username:
+        return jsonify({"error": "username_required"}), 400
+    if not auth.key_allows_user(key, username):
+        audit.log(None, "auto_login.denied", username,
+                  {"key": key["key_prefix"], "ip": ip, "reason": "not_in_whitelist"})
+        return jsonify({"error": "user_not_in_whitelist"}), 403
+
+    user = auth.get_user_by_username(username)
+    if not user:
+        return jsonify({"error": "user_not_found"}), 404
+    if not user["is_active"]:
+        return jsonify({"error": "account_disabled"}), 403
+
+    ticket = _secrets.token_urlsafe(32)
+    db.create_login_ticket(
+        auth.hash_api_key(ticket), user["id"], key["id"],
+        int(time.time()) + AUTO_LOGIN_TICKET_TTL,
+    )
+    db.touch_api_key(key["id"])
+
+    next_path = _safe_next(payload.get("next"))
+    url = f"{request.url_root.rstrip('/')}/auth/auto?ticket={ticket}"
+    if next_path:
+        from urllib.parse import quote
+        url += "&next=" + quote(next_path, safe="/")
+
+    audit.log(user["id"], "auto_login.issue", f"user:{user['id']}",
+              {"key": key["key_prefix"], "ip": ip, "next": next_path})
+    return jsonify({
+        "ok": True,
+        "login_url": url,
+        "expires_in": AUTO_LOGIN_TICKET_TTL,
+        "user": {k: user[k] for k in ("id", "username", "display_name", "role")},
+    })
+
+
+@app.route("/auth/auto")
+def auth_auto():
+    """Consume a one-time ticket and open a normal session for that user."""
+    ticket = (request.args.get("ticket") or "").strip()
+    next_path = _safe_next(request.args.get("next"))
+    if not ticket:
+        return redirect("/login?error=missing_ticket")
+
+    row = db.consume_login_ticket(auth.hash_api_key(ticket))
+    if not row:
+        return redirect("/login?error=invalid_ticket")
+
+    user = auth.get_user(row["user_id"])
+    if not user or not user["is_active"]:
+        return redirect("/login?error=account_disabled")
+
+    auth.login_user(user, remember=False)
+    auth.stamp_login(user["id"])
+    audit.log(user["id"], "auto_login.grant", f"user:{user['id']}",
+              {"key_id": row["key_id"]})
+    # must_change_pw is enforced by login_required on the next request, so a
+    # temporary-password user still lands on /change_password.
+    return redirect(next_path or "/")
+
+
+@app.route("/api/admin/api_keys", methods=["GET"])
+@auth.admin_required
+def api_admin_api_keys():
+    keys = db.list_api_keys()
+    for k in keys:
+        try:
+            k["allowed"] = _json_mod.loads(k.pop("allowed_usernames") or "[]")
+        except ValueError:
+            k["allowed"] = []
+    return jsonify({"keys": keys, "api_key_prefix": auth.API_KEY_PREFIX})
+
+
+@app.route("/api/admin/api_keys", methods=["POST"])
+@auth.admin_required
+def api_admin_api_key_create():
+    """Create a key. The plaintext is returned exactly once and never stored."""
+    u = auth.current_user()
+    payload = request.json or {}
+    name = (payload.get("name") or "").strip()[:60]
+    if not name:
+        return jsonify({"error": "name_required"}), 400
+
+    raw_allowed = payload.get("allowed_usernames")
+    if raw_allowed is None:
+        allowed = ["*"]
+    elif isinstance(raw_allowed, str):
+        allowed = [x.strip() for x in raw_allowed.split(",") if x.strip()]
+    else:
+        allowed = [str(x).strip() for x in raw_allowed if str(x).strip()]
+    if not allowed:
+        return jsonify({"error": "whitelist_empty"}), 400
+    if "*" not in allowed:
+        for uname in allowed:
+            if not auth.get_user_by_username(uname):
+                return jsonify({"error": "unknown_username", "username": uname}), 400
+
+    try:
+        days = int(payload.get("expires_days") or 0)
+    except (TypeError, ValueError):
+        return jsonify({"error": "bad_expires_days"}), 400
+    if days < 0 or days > 3650:
+        return jsonify({"error": "bad_expires_days"}), 400
+    expires_at = int(time.time()) + days * 86400 if days > 0 else None
+
+    allowed_ips = (payload.get("allowed_ips") or "").strip()[:500]
+    if allowed_ips:
+        import ipaddress
+        for part in [p.strip() for p in allowed_ips.split(",") if p.strip()]:
+            try:
+                ipaddress.ip_network(part, strict=False)
+            except ValueError:
+                return jsonify({"error": "bad_ip", "value": part}), 400
+
+    token, prefix, key_hash = auth.new_api_key()
+    key_id = db.create_api_key(name, prefix, key_hash, u["id"],
+                               _json_mod.dumps(allowed), allowed_ips, expires_at)
+    audit.log(u["id"], "api_key.create", f"api_key:{key_id}",
+              {"name": name, "prefix": prefix, "allowed": allowed,
+               "allowed_ips": allowed_ips, "expires_at": expires_at})
+    return jsonify({
+        "ok": True,
+        "id": key_id,
+        "key": token,          # shown once — no endpoint returns it again
+        "prefix": prefix,
+        "expires_at": expires_at,
+        "allowed": allowed,
+    }), 201
+
+
+@app.route("/api/admin/api_keys/<int:key_id>/revoke", methods=["POST"])
+@auth.admin_required
+def api_admin_api_key_revoke(key_id: int):
+    u = auth.current_user()
+    if not db.revoke_api_key(key_id):
+        return jsonify({"error": "not_found"}), 404
+    audit.log(u["id"], "api_key.revoke", f"api_key:{key_id}", {})
+    return jsonify({"ok": True})
+
+
 # ============================================================
 #  CRM: people-grouped browse + contact tracking
 # ============================================================

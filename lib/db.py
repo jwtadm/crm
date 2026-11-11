@@ -296,6 +296,40 @@ def _apply_migrations(c: sqlite3.Connection) -> None:
     c.execute("DROP INDEX IF EXISTS idx_people_last_contacted")  # prefix of idx_people_list_sort
     c.execute("DROP INDEX IF EXISTS idx_pa_person")              # prefix of idx_pa_person_cover
 
+    # --- API keys + one-time auto-login tickets ---
+    # Keys are generated on the server and stored as SHA-256 hashes; the
+    # plaintext is shown exactly once at creation. Tickets are single-use and
+    # short-lived so a redirect URL can never be replayed or long-lived.
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS api_keys (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            name            TEXT NOT NULL,
+            key_prefix      TEXT NOT NULL,
+            key_hash        TEXT NOT NULL UNIQUE,
+            created_by      INTEGER REFERENCES users(id),
+            created_at      INTEGER NOT NULL,
+            last_used_at    INTEGER,
+            use_count       INTEGER NOT NULL DEFAULT 0,
+            expires_at      INTEGER,
+            is_active       INTEGER NOT NULL DEFAULT 1,
+            allowed_usernames TEXT NOT NULL DEFAULT '[]',
+            allowed_ips     TEXT NOT NULL DEFAULT ''
+        )
+    """)
+    c.execute("CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash)")
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS login_tickets (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            ticket_hash TEXT NOT NULL UNIQUE,
+            user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            key_id      INTEGER REFERENCES api_keys(id) ON DELETE SET NULL,
+            created_at  INTEGER NOT NULL,
+            expires_at  INTEGER NOT NULL,
+            used_at     INTEGER
+        )
+    """)
+    c.execute("CREATE INDEX IF NOT EXISTS idx_login_tickets_exp ON login_tickets(expires_at)")
+
 
 # ---------- connection ----------
 
@@ -2014,3 +2048,88 @@ def get_trends(c: sqlite3.Connection, days: int = 7,
             "rejected": funnel.get((i, "不适合"), 0),
         })
     return result
+
+
+# ---------- API keys / auto-login tickets ----------
+# Small helpers with literal SQL at the call site (this repo forbids a generic
+# "run this SQL string" wrapper — see the security notes in tools/).
+
+def create_api_key(name: str, key_prefix: str, key_hash: str, created_by: int | None,
+                   allowed_usernames: str, allowed_ips: str, expires_at: int | None) -> int:
+    with tx() as c:
+        cur = c.execute(
+            "INSERT INTO api_keys (name, key_prefix, key_hash, created_by, created_at,"
+            " expires_at, allowed_usernames, allowed_ips)"
+            " VALUES (?,?,?,?,?,?,?,?)",
+            (name, key_prefix, key_hash, created_by, int(time.time()),
+             expires_at, allowed_usernames, allowed_ips),
+        )
+        return int(cur.lastrowid)
+
+
+def list_api_keys() -> list[dict]:
+    with ro() as c:
+        rows = c.execute(
+            "SELECT k.id, k.name, k.key_prefix, k.created_by, k.created_at,"
+            "       k.last_used_at, k.use_count, k.expires_at, k.is_active,"
+            "       k.allowed_usernames, k.allowed_ips,"
+            "       u.username AS creator_username, u.display_name AS creator_display"
+            "  FROM api_keys k LEFT JOIN users u ON u.id = k.created_by"
+            " ORDER BY k.is_active DESC, k.created_at DESC"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def get_api_key_by_hash(key_hash: str) -> dict | None:
+    with ro() as c:
+        row = c.execute(
+            "SELECT id, name, key_prefix, created_by, created_at, last_used_at,"
+            "       use_count, expires_at, is_active, allowed_usernames, allowed_ips"
+            "  FROM api_keys WHERE key_hash = ?",
+            (key_hash,),
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def revoke_api_key(key_id: int) -> bool:
+    with tx() as c:
+        cur = c.execute("UPDATE api_keys SET is_active = 0 WHERE id = ? AND is_active = 1",
+                        (key_id,))
+        return cur.rowcount > 0
+
+
+def touch_api_key(key_id: int) -> None:
+    with tx() as c:
+        c.execute("UPDATE api_keys SET last_used_at = ?, use_count = use_count + 1"
+                  " WHERE id = ?", (int(time.time()), key_id))
+
+
+def create_login_ticket(ticket_hash: str, user_id: int, key_id: int,
+                        expires_at: int) -> None:
+    now = int(time.time())
+    with tx() as c:
+        # Cheap housekeeping on every issue; the table only ever holds tickets
+        # from the last couple of minutes.
+        c.execute("DELETE FROM login_tickets WHERE expires_at < ?", (now,))
+        c.execute(
+            "INSERT INTO login_tickets (ticket_hash, user_id, key_id, created_at, expires_at)"
+            " VALUES (?,?,?,?,?)",
+            (ticket_hash, user_id, key_id, now, expires_at),
+        )
+
+
+def consume_login_ticket(ticket_hash: str) -> dict | None:
+    """Single-use: marks the ticket used inside the same IMMEDIATE transaction,
+    so two concurrent requests cannot both redeem it."""
+    now = int(time.time())
+    with tx() as c:
+        row = c.execute(
+            "SELECT id, user_id, key_id, expires_at, used_at FROM login_tickets"
+            " WHERE ticket_hash = ?",
+            (ticket_hash,),
+        ).fetchone()
+        if not row or row["used_at"] is not None or row["expires_at"] <= now:
+            return None
+        c.execute("UPDATE login_tickets SET used_at = ? WHERE id = ? AND used_at IS NULL",
+                  (now, row["id"]))
+        return dict(row)
