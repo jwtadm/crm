@@ -893,7 +893,11 @@ async function renderHandlesDrawer() {
     <div class="dsec">
       <div class="dsec-title">设置提醒</div>
       <div class="input-row" style="gap:6px;">
-        <input type="datetime-local" id="reminderAt" style="flex:0 0 190px;">
+        <button type="button" class="date-field is-empty" id="reminderAt" data-type="datetime"
+                data-placeholder="选择跟进时间" style="flex:0 0 auto;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+          <span class="df-text">选择跟进时间</span>
+        </button>
         <input type="text" id="reminderContent" placeholder="例：跟进合作意向（可空）" style="flex:1;">
         <button class="btn btn-accent btn-sm" onclick="onAddReminder(this)">设提醒</button>
       </div>
@@ -1135,7 +1139,8 @@ async function loadReminders() {
 
 async function onAddReminder(btn) {
   const pid = _handlesDrawerPid;
-  const atRaw = document.getElementById('reminderAt').value;
+  const atEl = document.getElementById('reminderAt');
+  const atRaw = atEl.dataset.value || '';
   const content = document.getElementById('reminderContent').value.trim();
   const msg = document.getElementById('reminderMsg');
   if (!atRaw) { msg.textContent = '先选个时间'; msg.style.color = 'var(--red)'; return; }
@@ -1153,7 +1158,7 @@ async function onAddReminder(btn) {
       return;
     }
     msg.innerHTML = '<span style="color:var(--green)">✓ 已设置</span>';
-    document.getElementById('reminderAt').value = '';
+    setDateField(atEl, '');
     document.getElementById('reminderContent').value = '';
     await loadReminders();
     // Trigger banner refresh next tick

@@ -2222,3 +2222,91 @@ select:disabled {
 .query-steps li:last-child::after { display: none; }
 .query-steps b { display: block; color: var(--text); font-weight: 600; margin-bottom: 2px; }
 .query-steps span { color: var(--text-3); line-height: 1.55; }
+
+/* ─── Date field + picker ─────────────────────────────────────
+   Native <input type=date> renders OS-specific "年/月/日" placeholders and a
+   grey calendar glyph that clash with the rest of the UI (datetime-local is
+   worse). Date fields are buttons that open this popover instead. */
+.date-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px;
+  font-family: var(--font);
+  font-size: 12.5px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: border-color .15s, box-shadow .15s, color .15s;
+  white-space: nowrap;
+}
+.date-field:hover { border-color: var(--border-strong); }
+.date-field:focus-visible { outline: none; border-color: var(--accent); box-shadow: var(--ring); }
+.date-field.is-empty { color: var(--text-3); }
+.date-field svg { flex-shrink: 0; opacity: .65; }
+.date-field.is-empty svg { opacity: .45; }
+
+.dp-pop {
+  position: fixed;
+  z-index: 500;
+  width: 272px;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-lg);
+  animation: fade-up .14s ease both;
+  user-select: none;
+}
+.dp-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.dp-title { font-size: 13px; font-weight: 600; color: var(--text); }
+.dp-nav {
+  width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
+  border: 1px solid transparent; border-radius: var(--r-sm);
+  background: transparent; color: var(--text-2); font-size: 15px; cursor: pointer;
+}
+.dp-nav:hover { background: var(--surface-2); border-color: var(--border); color: var(--text); }
+.dp-week, .dp-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.dp-week span { text-align: center; font-size: 10.5px; color: var(--text-3); padding: 2px 0 4px; }
+.dp-day {
+  height: 32px; border: 1px solid transparent; border-radius: var(--r-sm);
+  background: transparent; color: var(--text); font-size: 12.5px;
+  font-variant-numeric: tabular-nums; cursor: pointer;
+}
+.dp-day:hover { background: var(--surface-2); }
+.dp-day.is-out { color: var(--text-3); opacity: .55; }
+.dp-day.is-today { border-color: var(--accent-soft); color: var(--accent-ink); font-weight: 600; }
+.dp-day.is-sel {
+  background: var(--grad); color: #fff; font-weight: 600;
+  border-color: transparent; box-shadow: 0 4px 10px -6px rgba(79,70,229,.8);
+}
+.dp-day.is-sel:hover { background: var(--grad); }
+.dp-time {
+  display: flex; align-items: center; gap: 8px; margin-top: 10px;
+  padding-top: 10px; border-top: 1px solid var(--border);
+  font-size: 12px; color: var(--text-2);
+}
+/* `display:flex` above beats the UA rule for [hidden], so say it explicitly. */
+.dp-time[hidden] { display: none; }
+.dp-time select {
+  width: auto; min-width: 60px; height: 28px; padding: 0 6px;
+  font-family: var(--font); font-size: 12px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r-sm); color: var(--text);
+}
+.dp-foot { display: flex; align-items: center; gap: 6px; margin-top: 10px; }
+.dp-quick {
+  border: none; background: transparent; color: var(--text-2);
+  font-size: 12px; padding: 4px 6px; border-radius: var(--r-sm); cursor: pointer;
+}
+.dp-quick:hover { background: var(--surface-2); color: var(--text); }
+.dp-ok {
+  margin-left: auto; border: none; border-radius: var(--r-sm);
+  background: var(--grad); color: #fff; font-size: 12px; font-weight: 600;
+  padding: 6px 14px; cursor: pointer;
+  box-shadow: 0 4px 10px -6px rgba(79,70,229,.8);
+}
+.dp-ok:hover { filter: brightness(1.05); }

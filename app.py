@@ -1647,6 +1647,7 @@ def api_stats():
     if "start" in args and "end" in args:
         start_ts = int(args["start"])
         end_ts = int(args["end"])
+        range_preset = "custom"   # so the UI labels it 自定义 instead of 今天
     else:
         if range_preset == "all":
             # All time - from beginning to now

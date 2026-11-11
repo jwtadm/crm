@@ -370,6 +370,200 @@ function renderAccount(a, opts={}) {
     </div>
   </div>`;
 }
+
+// ── Date / datetime picker ──────────────────────────────────────────────
+// Native <input type=date> shows OS placeholders ("年/月/日") and a grey glyph
+// that look broken next to the rest of the UI, and datetime-local is worse.
+// A .date-field button opens this popover instead; the picked value lands in
+// btn.dataset.value ("YYYY-MM-DD" or "YYYY-MM-DDTHH:mm") and a `change` event
+// fires on the button, so inline onchange handlers keep working.
+(function () {
+  const pad = n => String(n).padStart(2, '0');
+  const ymd = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  let pop = null, ctx = null, openedAt = 0;
+
+  function fmt(btn) {
+    const isTime = btn.dataset.type === 'datetime';
+    const v = btn.dataset.value || '';
+    const label = btn.querySelector('.df-text');
+    if (!v) {
+      btn.classList.add('is-empty');
+      label.textContent = btn.dataset.placeholder || (isTime ? '选择时间' : '选择日期');
+      return;
+    }
+    btn.classList.remove('is-empty');
+    const [d, t] = v.split('T');
+    const [y, mo, da] = d.split('-').map(Number);
+    let txt = y === new Date().getFullYear() ? `${mo}月${da}日` : `${y}年${mo}月${da}日`;
+    if (isTime && t) txt += ` ${t}`;
+    label.textContent = txt;
+  }
+
+  function build() {
+    pop = document.createElement('div');
+    pop.className = 'dp-pop';
+    pop.style.display = 'none';
+    pop.innerHTML =
+      '<div class="dp-top">' +
+        '<button type="button" class="dp-nav" data-nav="-1">‹</button>' +
+        '<div class="dp-title"></div>' +
+        '<button type="button" class="dp-nav" data-nav="1">›</button>' +
+      '</div>' +
+      '<div class="dp-week"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>' +
+      '<div class="dp-grid"></div>' +
+      '<div class="dp-time" hidden>时间 <select class="dp-hh"></select> : <select class="dp-mm"></select></div>' +
+      '<div class="dp-foot">' +
+        '<button type="button" class="dp-quick" data-quick="today">今天</button>' +
+        '<button type="button" class="dp-quick" data-quick="clear">清除</button>' +
+        '<button type="button" class="dp-ok">确定</button>' +
+      '</div>';
+    document.body.appendChild(pop);
+
+    const hh = pop.querySelector('.dp-hh'), mm = pop.querySelector('.dp-mm');
+    for (let i = 0; i < 24; i++) hh.innerHTML += `<option value="${pad(i)}">${pad(i)}</option>`;
+    for (let i = 0; i < 60; i += 5) mm.innerHTML += `<option value="${pad(i)}">${pad(i)}</option>`;
+
+    pop.addEventListener('click', e => {
+      // Keep clicks inside the popover away from the document handler below.
+      // render() replaces the day buttons, so by the time the document handler
+      // runs the target is detached and `pop.contains(target)` is false —
+      // without this stop the popover closed on every day click.
+      e.stopPropagation();
+      const nav = e.target.closest('[data-nav]');
+      if (nav) {
+        ctx.m += +nav.dataset.nav;
+        const d = new Date(ctx.y, ctx.m, 1);
+        ctx.y = d.getFullYear(); ctx.m = d.getMonth();
+        render();
+        return;
+      }
+      const day = e.target.closest('.dp-day');
+      if (day) {
+        ctx.sel = day.dataset.d;
+        if (ctx.btn.dataset.type === 'datetime') { render(); }
+        else commit();
+        return;
+      }
+      const quick = e.target.closest('[data-quick]');
+      if (quick) {
+        if (quick.dataset.quick === 'clear') { ctx.btn.dataset.value = ''; fmt(ctx.btn); fire(ctx.btn); close(); return; }
+        const now = new Date();
+        ctx.sel = ymd(now);
+        ctx.y = now.getFullYear(); ctx.m = now.getMonth();
+        ctx.hh = pad(now.getHours()); ctx.mm = pad(Math.floor(now.getMinutes() / 5) * 5);
+        if (ctx.btn.dataset.type === 'datetime') { render(); } else commit();
+        return;
+      }
+      if (e.target.closest('.dp-ok')) commit();
+    });
+    pop.addEventListener('change', e => {
+      if (e.target.classList.contains('dp-hh')) ctx.hh = e.target.value;
+      if (e.target.classList.contains('dp-mm')) ctx.mm = e.target.value;
+    });
+  }
+
+  function fire(btn) {
+    btn.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  function commit() {
+    const btn = ctx.btn;
+    btn.dataset.value = ctx.sel + (btn.dataset.type === 'datetime' ? 'T' + ctx.hh + ':' + ctx.mm : '');
+    fmt(btn);
+    fire(btn);
+    close();
+  }
+
+  function render() {
+    const { y, m, sel } = ctx;
+    const today = ymd(new Date());
+    pop.querySelector('.dp-title').textContent = `${y}年${m + 1}月`;
+    const isTime = ctx.btn.dataset.type === 'datetime';
+    pop.querySelector('.dp-time').hidden = !isTime;
+    if (isTime) {
+      pop.querySelector('.dp-hh').value = ctx.hh;
+      pop.querySelector('.dp-mm').value = ctx.mm;
+    }
+    const lead = (new Date(y, m, 1).getDay() + 6) % 7;   // Monday first
+    let html = '';
+    for (let i = 0; i < 42; i++) {
+      const d = new Date(y, m, 1 - lead + i);
+      const key = ymd(d);
+      const cls = ['dp-day'];
+      if (d.getMonth() !== m) cls.push('is-out');
+      if (key === today) cls.push('is-today');
+      if (key === sel) cls.push('is-sel');
+      html += `<button type="button" class="${cls.join(' ')}" data-d="${key}">${d.getDate()}</button>`;
+    }
+    pop.querySelector('.dp-grid').innerHTML = html;
+  }
+
+  function open(btn) {
+    if (!pop) build();
+    const type = btn.dataset.type === 'datetime' ? 'datetime' : 'date';
+    const v = btn.dataset.value || '';
+    const base = v ? new Date(v.length > 10 ? v : v + 'T00:00') : new Date();
+    const now = new Date();
+    ctx = {
+      btn,
+      sel: v ? v.slice(0, 10) : ymd(base),
+      y: base.getFullYear(),
+      m: base.getMonth(),
+      hh: (v && v.length > 10) ? v.slice(11, 13) : pad(now.getHours()),
+      mm: (v && v.length > 10) ? v.slice(14, 16) : pad(Math.floor(now.getMinutes() / 5) * 5),
+    };
+    render();
+    pop.style.display = '';
+    const r = btn.getBoundingClientRect();
+    const w = pop.offsetWidth, h = pop.offsetHeight;
+    // Prefer opening right-aligned to the field when the left-aligned box would
+    // run off screen: in the stats toolbar that keeps the *other* date button
+    // clickable instead of burying it under the calendar.
+    let left = r.left;
+    if (left + w > window.innerWidth - 8) left = r.right - w;
+    left = Math.max(8, left);
+    let top = r.bottom + 6;
+    if (top + h > window.innerHeight - 8) top = Math.max(8, r.top - h - 6);
+    pop.style.left = left + 'px';
+    pop.style.top = top + 'px';
+    pop.dataset.open = '1';
+    openedAt = Date.now();
+    btn.setAttribute('aria-expanded', 'true');
+  }
+
+  function close() {
+    if (!pop || pop.style.display === 'none') return;
+    pop.style.display = 'none';
+    delete pop.dataset.open;
+    if (ctx && ctx.btn) ctx.btn.setAttribute('aria-expanded', 'false');
+    ctx = null;
+  }
+
+  document.addEventListener('click', e => {
+    if (pop && pop.contains(e.target)) return;
+    const btn = e.target.closest('.date-field');
+    if (btn) {
+      e.preventDefault();
+      if (pop && pop.dataset.open && ctx && ctx.btn === btn) { close(); return; }
+      open(btn);
+      return;
+    }
+    close();
+  });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
+  // Close on scroll (the anchor would drift), but not for the scroll that
+  // focusing the button triggers in the drawer right after opening.
+  window.addEventListener('scroll', () => {
+    if (Date.now() - openedAt > 300) close();
+  }, true);
+  window.addEventListener('resize', close);
+
+  // Paint any field that already carries a value.
+  document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.date-field').forEach(fmt);
+  });
+  window.setDateField = (btn, value) => { btn.dataset.value = value || ''; fmt(btn); };
+})();
 </script>
 {% block scripts %}{% endblock %}
 </body>
