@@ -1060,8 +1060,9 @@ def _gather_recipients(person_ids: list[int]) -> list[dict]:
     if not person_ids:
         return []
     with db.tx() as c:
-        rows = db.list_people(c, limit=len(person_ids), offset=0)
-        # list_people doesn't filter by id; do it ourselves
+        # (No list_people() call here: its result was unused, but it still ran
+        # a full COUNT(*) over people plus a paginated join and the account
+        # aggregate on every send/preview.)
         qmarks = ",".join("?" * len(person_ids))
         people = c.execute(
             f"SELECT id, email, full_name, status, owner FROM people WHERE id IN ({qmarks})",
@@ -2074,14 +2075,10 @@ def _scope_seeds_to_user(rows: list[dict], user: dict) -> list[dict]:
     if user["role"] == "admin":
         return rows
     uid = user["id"]
-    out = []
-    with db.tx() as c:
-        for r in rows:
-            p = c.execute("SELECT assigned_user_id FROM people WHERE id=?",
-                          (r["person_id"],)).fetchone()
-            if p and (p["assigned_user_id"] == uid):
-                out.append(r)
-    return out
+    # assigned_user_id already rides along on each seed (people is joined in
+    # list_eligible_seeds), so this is a plain filter — it used to run one
+    # SELECT per seed.
+    return [r for r in rows if r.get("assigned_user_id") == uid]
 
 
 @app.route("/api/similarity/bulk/estimate", methods=["GET"])

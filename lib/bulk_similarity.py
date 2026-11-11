@@ -62,7 +62,10 @@ def list_eligible_seeds(
     sql = (
         "SELECT pa.id AS aid, pa.platform, pa.username, pa.platform_user_id, "
         "       pa.secondary_id, pa.follower_count, p.id AS person_id, "
-        "       p.full_name AS person_name, p.status AS person_status "
+        "       p.full_name AS person_name, p.status AS person_status, "
+        # Carried so the caller can scope seeds to a staff member without a
+        # second query per seed (people is already joined below).
+        "       p.assigned_user_id "
         "  FROM platform_accounts pa "
         "  JOIN people p ON p.id = pa.person_id "
         " WHERE pa.platform IN (" + ",".join(["?"] * len(plats)) + ") "

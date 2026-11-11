@@ -75,10 +75,13 @@ def main() -> int:
                 "UPDATE people SET assigned_user_id=?, updated_at=? WHERE id=? AND assigned_user_id IS NULL",
                 (uid, now, pid),
             )
-    # Audit (one entry per assignment kept terse)
-    for pid, uid in will_update:
-        audit.log(args.actor_id, "person.assign", f"person:{pid}",
-                  {"assigned_user_id": uid, "via": "owner_migration"})
+    # Audit (one entry per assignment kept terse). Batched into a single
+    # transaction — per-row audit.log() meant one connection + commit each.
+    audit.log_many([
+        (args.actor_id, "person.assign", f"person:{pid}",
+         {"assigned_user_id": uid, "via": "owner_migration"})
+        for pid, uid in will_update
+    ])
     print(f"\napplied {len(will_update)} assignments")
     return 0
 
