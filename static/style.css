@@ -1640,3 +1640,54 @@ select:disabled {
   padding-left: 10px;
   padding-right: 10px;
 }
+
+/* ─── Form stack (account settings / change password) ────────── */
+
+.form-stack { display: flex; flex-direction: column; gap: 16px; }
+
+.form-field { display: flex; flex-direction: column; gap: 6px; }
+
+.form-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+  letter-spacing: .01em;
+}
+
+.form-hint { font-size: 11.5px; color: var(--text-3); }
+.form-hint.is-warn { color: var(--orange); }
+.form-hint.is-ok { color: var(--green); }
+
+.input-with-action { position: relative; display: flex; }
+.input-with-action input { padding-right: 58px; }
+
+.input-action {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 3px 8px;
+  font-size: 11px;
+  color: var(--text-3);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: all .15s;
+}
+
+.input-action:hover { color: var(--accent); border-color: var(--accent-soft); }
+
+.form-msg { font-size: 12px; }
+.form-msg.is-ok { color: var(--green); }
+.form-msg.is-err { color: var(--red); }
+
+.banner-warn {
+  padding: 10px 14px;
+  border-radius: var(--r);
+  font-size: 12.5px;
+  line-height: 1.6;
+  background: var(--orange-light);
+  color: var(--orange);
+  border: 1px solid var(--orange);
+}
