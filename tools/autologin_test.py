@@ -68,6 +68,9 @@ r = admin.post("/api/admin/api_keys", json={"name": "bad", "allowed_usernames": 
 check("unknown username rejected", r.status_code == 400 and j(r)["error"] == "unknown_username")
 r = admin.post("/api/admin/api_keys", json={"name": "bad2", "allowed_usernames": []})
 check("empty whitelist rejected", r.status_code == 400)
+r = admin.post("/api/admin/api_keys", json={"name": "bad3", "allowed_usernames": "*",
+                                            "expires_days": 0})
+check("permanent key rejected (0 days)", r.status_code == 400 and j(r)["error"] == "bad_expires_days")
 
 # --- issue + redeem ---
 r = anon.post("/api/auth/auto_login", json={"username": "Echo", "next": "/people"},
@@ -88,6 +91,17 @@ check("ticket cannot be replayed", "invalid_ticket" in (r.headers.get("Location"
 r = anon.post("/api/auth/auto_login", json={"username": "Talia"},
               headers={"Authorization": "Bearer " + key})
 check("username whitelist enforced", r.status_code == 403 and j(r)["error"] == "user_not_in_whitelist")
+r = anon.post("/api/auth/auto_login", json={"username": "admin"},
+              headers={"Authorization": "Bearer " + key})
+check("whitelisted key still cannot log in admin",
+      r.status_code == 403 and j(r)["error"] == "user_not_in_whitelist")
+
+# a key that allows everyone must still refuse the admin account
+wide = j(admin.post("/api/admin/api_keys", json={"name": "wide", "allowed_usernames": "*"}))["key"]
+r = anon.post("/api/auth/auto_login", json={"username": "admin"},
+              headers={"Authorization": "Bearer " + wide})
+check("wildcard key cannot log in admin",
+      r.status_code == 403 and j(r)["error"] == "admin_not_allowed")
 r = anon.post("/api/auth/auto_login", json={"username": "Echo"},
               headers={"Authorization": "Bearer crm_bogus"})
 check("unknown key rejected", r.status_code == 401)
@@ -130,6 +144,22 @@ r = b3.get("/people", follow_redirects=False)
 check("must_change_pw still enforced", r.status_code == 302 and "/change_password" in (r.headers.get("Location") or ""))
 sqlite3.connect(db_path).execute(
     "UPDATE users SET must_change_pw = 0 WHERE username = 'Echo'").connection.commit()
+
+# --- expired ticket + key without expiry ---
+r = anon.post("/api/auth/auto_login", json={"username": "Echo"},
+              headers={"Authorization": "Bearer " + key})
+ticket_path = j(r)["login_url"].split("localhost", 1)[-1]
+sqlite3.connect(db_path).execute(
+    "UPDATE login_tickets SET expires_at = 1000").connection.commit()
+r = app.test_client().get(ticket_path, follow_redirects=False)
+check("expired ticket rejected", "invalid_ticket" in (r.headers.get("Location") or ""))
+
+legacy = j(admin.post("/api/admin/api_keys", json={"name": "legacy", "allowed_usernames": "*"}))
+sqlite3.connect(db_path).execute(
+    "UPDATE api_keys SET expires_at = NULL WHERE id = ?", (legacy["id"],)).connection.commit()
+r = anon.post("/api/auth/auto_login", json={"username": "Echo"},
+              headers={"Authorization": "Bearer " + legacy["key"]})
+check("key with no expiry rejected", r.status_code == 401 and j(r)["error"] == "key_expired")
 
 # --- audit ---
 actions = [r[0] for r in sqlite3.connect(db_path).execute(

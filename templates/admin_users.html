@@ -105,7 +105,7 @@
       <p class="hint">密钥只显示一次。创建后请立刻保存到调用方服务器的环境变量，例如 <code>CRM_API_KEY</code>。</p>
       <div class="add-grid">
         <label>名称 *<input type="text" id="nkName" placeholder="如 官网单点登录" autocomplete="off"></label>
-        <label>有效期（天）<input type="number" id="nkDays" value="90" min="0" max="3650"></label>
+        <label>有效期（天，必填 1–3650）<input type="number" id="nkDays" value="90" min="1" max="3650"></label>
         <label style="grid-column:1/-1;">允许登录的用户名（逗号分隔，<code>*</code> 表示全部）
           <input type="text" id="nkAllowed" value="*" placeholder="alice, bob 或 *" autocomplete="off">
         </label>
@@ -371,7 +371,7 @@ function renderKeys() {
   const box = document.getElementById('keysBox');
   const meta = document.getElementById('keysMeta');
   const now = Math.floor(Date.now() / 1000);
-  const active = _keyList.filter(k => k.is_active && (!k.expires_at || k.expires_at > now)).length;
+  const active = _keyList.filter(k => k.is_active && k.expires_at && k.expires_at > now).length;
   meta.textContent = _keyList.length ? `${active} 个可用 / 共 ${_keyList.length} 个` : '';
   if (!_keyList.length) {
     box.innerHTML = '<div class="empty">还没有 API 密钥。需要第三方免密登录时再创建。</div>';
@@ -389,14 +389,14 @@ function renderKeys() {
         : (k.allowed || []).map(escapeHtml).join(', ');
       const status = !k.is_active
         ? '<span class="pill">已撤销</span>'
-        : expired ? '<span class="pill">已过期</span>' : '<span class="pill pill-ok">可用</span>';
+        : (!k.expires_at || expired) ? '<span class="pill">已过期</span>' : '<span class="pill pill-ok">可用</span>';
       return `<tr>
         <td><b>${escapeHtml(k.name)}</b>${
           k.allowed_ips ? `<div class="hint" style="margin:2px 0 0;">IP: ${escapeHtml(k.allowed_ips)}</div>` : ''
         }</td>
         <td><code>${escapeHtml(k.key_prefix)}…</code></td>
         <td style="max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(who)}">${escapeHtml(who)}</td>
-        <td>${k.expires_at ? fmtTime(k.expires_at) : '永不过期'}</td>
+        <td>${k.expires_at ? fmtTime(k.expires_at) : '未设置'}</td>
         <td>${k.last_used_at ? fmtTime(k.last_used_at) : '—'}</td>
         <td class="num">${k.use_count || 0}</td>
         <td>${status}</td>
@@ -439,7 +439,7 @@ async function submitNewKey() {
         unknown_username: `用户名不存在：${d.username || ''}`,
         whitelist_empty: '白名单不能为空（全部用户请填 *）',
         bad_ip: `IP 格式不对：${d.value || ''}`,
-        bad_expires_days: '有效期需在 0–3650 天之间',
+        bad_expires_days: '有效期需在 1–3650 天之间（不允许永久）',
       };
       throw new Error(map[d.error] || d.detail || d.error || `HTTP ${r.status}`);
     }
@@ -447,7 +447,7 @@ async function submitNewKey() {
     document.getElementById('keyValue').textContent = d.key;
     document.getElementById('keyHint').textContent =
       `只显示这一次。白名单：${(d.allowed || []).includes('*') ? '全部用户' : (d.allowed || []).join(', ')}` +
-      (d.expires_at ? `；有效期至 ${fmtTime(d.expires_at)}` : '；永不过期') + '。';
+      (d.expires_at ? `；有效期至 ${fmtTime(d.expires_at)}` : '') + '。';
     document.getElementById('keyModal').classList.remove('hidden');
     loadKeys();
     loadAudit();

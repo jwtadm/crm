@@ -442,7 +442,9 @@ def api_auth_auto_login():
     key = db.get_api_key_by_hash(auth.hash_api_key(token))
     if not key or not key["is_active"]:
         return jsonify({"error": "invalid_api_key"}), 401
-    if key["expires_at"] and key["expires_at"] <= int(time.time()):
+    # No key may live forever: creation requires 1–3650 days, and a legacy row
+    # with no expiry is refused here too rather than silently accepted.
+    if not key["expires_at"] or key["expires_at"] <= int(time.time()):
         return jsonify({"error": "key_expired"}), 401
     if not auth.key_allows_ip(key, ip):
         audit.log(None, "auto_login.denied", None,
@@ -467,6 +469,12 @@ def api_auth_auto_login():
         return jsonify({"error": "user_not_found"}), 404
     if not user["is_active"]:
         return jsonify({"error": "account_disabled"}), 403
+    # Admin accounts are never reachable through this API, even with a "*"
+    # whitelist: an integration key must not be able to mint a superuser session.
+    if user["role"] == "admin":
+        audit.log(None, "auto_login.denied", username,
+                  {"key": key["key_prefix"], "ip": ip, "reason": "admin_not_allowed"})
+        return jsonify({"error": "admin_not_allowed"}), 403
 
     ticket = _secrets.token_urlsafe(32)
     db.create_login_ticket(
@@ -552,13 +560,17 @@ def api_admin_api_key_create():
             if not auth.get_user_by_username(uname):
                 return jsonify({"error": "unknown_username", "username": uname}), 400
 
+    # Keys always expire: "never" made a leaked key permanent. 1–3650 days,
+    # default 90 when the caller omits the field (`0` is rejected, not
+    # silently treated as "default").
+    raw_days = payload.get("expires_days")
     try:
-        days = int(payload.get("expires_days") or 0)
+        days = int(raw_days) if raw_days not in (None, "") else 90
     except (TypeError, ValueError):
         return jsonify({"error": "bad_expires_days"}), 400
-    if days < 0 or days > 3650:
+    if days < 1 or days > 3650:
         return jsonify({"error": "bad_expires_days"}), 400
-    expires_at = int(time.time()) + days * 86400 if days > 0 else None
+    expires_at = int(time.time()) + days * 86400
 
     allowed_ips = (payload.get("allowed_ips") or "").strip()[:500]
     if allowed_ips:
