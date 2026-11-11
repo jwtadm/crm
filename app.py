@@ -6,6 +6,7 @@ import io
 import json as _json_mod
 import os
 import hashlib
+import hmac
 import secrets as _secrets
 import tempfile
 import threading
@@ -19,7 +20,7 @@ from flask import Flask, request, jsonify, send_file, render_template, redirect,
 from flask_caching import Cache
 from flask_compress import Compress
 
-from lib import db, ai, contact, ingest, mailer, settings, auth, audit, bulk_similarity, bulk_hydrate, job_watchdog
+from lib import db, ai, contact, ingest, mailer, settings, auth, audit, bulk_similarity, bulk_hydrate, job_watchdog, sso
 from platforms import (
     get as get_platform,
     PLATFORMS, SIMILAR_CAPABLE, SEARCH_CAPABLE, INFO_CAPABLE,
@@ -398,13 +399,13 @@ def api_auth_change_password():
     return jsonify({"ok": True})
 
 
-# ---------- API keys + auto-login ----------
-# Flow: a trusted backend holds an API key (created by an admin here), calls
-# POST /api/auth/auto_login with it, receives a one-time login_url, and sends
-# the user's browser there. The key never appears in a URL, and the ticket it
-# mints is single-use and expires in 60 seconds.
-
-AUTO_LOGIN_TICKET_TTL = 60
+# ---------- SSO (signed-link auto-login) ----------
+# An external system holds {app_id, secret} (server side only) and builds:
+#   /sso/login?app_id=..&username=..&ts=..&nonce=..&sign=..
+#   sign = hex(HMAC-SHA256("username|ts|nonce", secret))
+# The browser just opens that URL. The secret is derived from the app's salt
+# and the Flask secret key (lib/sso.py), so it is never stored in the DB.
+# Links do not expire: nonce (single use) is the replay protection.
 
 
 def _client_ip() -> str:
@@ -412,199 +413,188 @@ def _client_ip() -> str:
             .split(",")[0].strip())
 
 
-def _safe_next(value: str | None) -> str:
-    """Only same-origin absolute paths — blocks //evil and /\\evil redirects."""
-    v = (value or "").strip()
-    if not v.startswith("/") or v[1:2] in ("/", "\\"):
-        return ""
-    return v[:200]
+def _sso_fail(message: str, status: int = 403):
+    """Rendered error page: operators need the reason, not a JSON blob."""
+    return render_template("sso_fail.html", message=message, status=status), status
 
 
-def _bearer_token() -> str:
-    raw = request.headers.get("Authorization", "")
-    if raw[:7].lower() == "bearer ":
-        return raw[7:].strip()
-    return ""
+@app.route("/sso/login")
+def sso_login():
+    """Signed-link auto login.
 
-
-@app.route("/api/auth/auto_login", methods=["POST"])
-def api_auth_auto_login():
-    """Exchange an API key + username for a one-time login URL.
-
-    Body: {"username": "alice", "next": "/people" (optional)}
-    Auth: Authorization: Bearer <api key>
+    Query: app_id, username, ts, nonce, sign  (signature mode)
+           app_id, username, key              (simple mode, if enabled)
     """
+    app_id = (request.args.get("app_id") or "").strip()
+    if not app_id:
+        return _sso_fail("缺少 app_id")
+    row = db.get_sso_app(app_id)
+    if not row or not row["is_active"]:
+        audit.log(None, "sso.denied", app_id, {"reason": "app_missing_or_disabled"})
+        return _sso_fail("应用不存在或已禁用")
+
     ip = _client_ip()
-    token = _bearer_token()
-    if not token:
-        return jsonify({"error": "missing_api_key"}), 401
+    if not sso.ip_allowed(row, ip):
+        audit.log(None, "sso.denied", app_id, {"ip": ip, "reason": "ip_not_allowed"})
+        return _sso_fail("来源 IP 不被允许")
+    if not auth.rate_limit("sso_app_ip", f"{app_id}:{ip}", max_hits=30, window_seconds=60):
+        return _sso_fail("请求过于频繁", 429)
 
-    key = db.get_api_key_by_hash(auth.hash_api_key(token))
-    if not key or not key["is_active"]:
-        return jsonify({"error": "invalid_api_key"}), 401
-    # No key may live forever: creation requires 1–3650 days, and a legacy row
-    # with no expiry is refused here too rather than silently accepted.
-    if not key["expires_at"] or key["expires_at"] <= int(time.time()):
-        return jsonify({"error": "key_expired"}), 401
-    if not auth.key_allows_ip(key, ip):
-        audit.log(None, "auto_login.denied", None,
-                  {"key": key["key_prefix"], "ip": ip, "reason": "ip_not_allowed"})
-        return jsonify({"error": "ip_not_allowed"}), 403
-    if not auth.rate_limit("auto_login_key", str(key["id"]), max_hits=60, window_seconds=60):
-        return jsonify({"error": "rate_limited"}), 429
-    if not auth.rate_limit("auto_login_ip", ip, max_hits=30, window_seconds=60):
-        return jsonify({"error": "rate_limited"}), 429
-
-    payload = request.json or {}
-    username = (payload.get("username") or "").strip()
+    username = (request.args.get("username") or "").strip()
     if not username:
-        return jsonify({"error": "username_required"}), 400
-    if not auth.key_allows_user(key, username):
-        audit.log(None, "auto_login.denied", username,
-                  {"key": key["key_prefix"], "ip": ip, "reason": "not_in_whitelist"})
-        return jsonify({"error": "user_not_in_whitelist"}), 403
+        return _sso_fail("缺少 username")
+
+    secret = sso.app_secret(app.secret_key, app_id, row["secret_salt"])
+    simple_key = request.args.get("key")
+    nonce = ""
+
+    if simple_key is not None:
+        if not row["allow_simple_key"]:
+            return _sso_fail("该应用未开启简单 key 模式")
+        if not hmac.compare_digest(simple_key, secret):
+            audit.log(None, "sso.denied", app_id,
+                      {"username": username, "ip": ip, "reason": "bad_key", "mode": "simple"})
+            return _sso_fail("密钥错误")
+        mode = "simple"
+    else:
+        ts = (request.args.get("ts") or "").strip()
+        nonce = (request.args.get("nonce") or "").strip()
+        sign_hex = (request.args.get("sign") or "").strip()
+        if not ts or not nonce or not sign_hex:
+            return _sso_fail("参数不完整")
+        bad = sso.check_sign_params(ts, nonce, sign_hex)
+        if bad:
+            return _sso_fail(bad)
+        # Links are permanent by design: ts is part of the signature but is not
+        # compared against the clock. Replay protection comes from the nonce.
+        if not sso.verify_sign(username, ts, nonce, sign_hex, secret):
+            audit.log(None, "sso.denied", app_id,
+                      {"username": username, "ip": ip, "reason": "bad_sign", "mode": "signed"})
+            return _sso_fail("签名校验失败")
+        mode = "signed"
 
     user = auth.get_user_by_username(username)
     if not user:
-        return jsonify({"error": "user_not_found"}), 404
+        return _sso_fail("账号不存在")
     if not user["is_active"]:
-        return jsonify({"error": "account_disabled"}), 403
-    # Admin accounts are never reachable through this API, even with a "*"
-    # whitelist: an integration key must not be able to mint a superuser session.
-    if user["role"] == "admin":
-        audit.log(None, "auto_login.denied", username,
-                  {"key": key["key_prefix"], "ip": ip, "reason": "admin_not_allowed"})
-        return jsonify({"error": "admin_not_allowed"}), 403
+        return _sso_fail("账号已被禁用")
+    if not sso.user_allowed(row, username, user):
+        audit.log(None, "sso.denied", app_id,
+                  {"username": username, "ip": ip, "reason": "user_not_allowed"})
+        return _sso_fail("该账号不在本应用的允许登录范围")
 
-    ticket = _secrets.token_urlsafe(32)
-    db.create_login_ticket(
-        auth.hash_api_key(ticket), user["id"], key["id"],
-        int(time.time()) + AUTO_LOGIN_TICKET_TTL,
-    )
-    db.touch_api_key(key["id"])
-
-    next_path = _safe_next(payload.get("next"))
-    url = f"{request.url_root.rstrip('/')}/auth/auto?ticket={ticket}"
-    if next_path:
-        from urllib.parse import quote
-        url += "&next=" + quote(next_path, safe="/")
-
-    audit.log(user["id"], "auto_login.issue", f"user:{user['id']}",
-              {"key": key["key_prefix"], "ip": ip, "next": next_path})
-    return jsonify({
-        "ok": True,
-        "login_url": url,
-        "expires_in": AUTO_LOGIN_TICKET_TTL,
-        "user": {k: user[k] for k in ("id", "username", "display_name", "role")},
-    })
-
-
-@app.route("/auth/auto")
-def auth_auto():
-    """Consume a one-time ticket and open a normal session for that user."""
-    ticket = (request.args.get("ticket") or "").strip()
-    next_path = _safe_next(request.args.get("next"))
-    if not ticket:
-        return redirect("/login?error=missing_ticket")
-
-    row = db.consume_login_ticket(auth.hash_api_key(ticket))
-    if not row:
-        return redirect("/login?error=invalid_ticket")
-
-    user = auth.get_user(row["user_id"])
-    if not user or not user["is_active"]:
-        return redirect("/login?error=account_disabled")
+    # Consume the nonce only after every other check passed, so a failed login
+    # does not burn the caller's link.
+    if mode == "signed" and not db.use_sso_nonce(app_id, nonce):
+        return _sso_fail("该链接已使用过")
 
     auth.login_user(user, remember=False)
     auth.stamp_login(user["id"])
-    audit.log(user["id"], "auto_login.grant", f"user:{user['id']}",
-              {"key_id": row["key_id"]})
-    # must_change_pw is enforced by login_required on the next request, so a
-    # temporary-password user still lands on /change_password.
-    return redirect(next_path or "/")
+    db.touch_sso_app(row["id"])
+    audit.log(user["id"], "sso.login", f"user:{user['id']}",
+              {"app": app_id, "ip": ip, "mode": mode})
+    # Fixed target: no user-controlled redirects. must_change_pw is enforced by
+    # login_required on the next request, so temp-password users go to /change_password.
+    return redirect("/")
 
 
-@app.route("/api/admin/api_keys", methods=["GET"])
+@app.route("/api/admin/sso_apps", methods=["GET"])
 @auth.admin_required
-def api_admin_api_keys():
-    keys = db.list_api_keys()
-    for k in keys:
+def api_admin_sso_apps():
+    apps = db.list_sso_apps()
+    for a in apps:
         try:
-            k["allowed"] = _json_mod.loads(k.pop("allowed_usernames") or "[]")
+            a["allow_users_list"] = _json_mod.loads(a.pop("allow_users") or "[]")
         except ValueError:
-            k["allowed"] = []
-    return jsonify({"keys": keys, "api_key_prefix": auth.API_KEY_PREFIX})
+            a["allow_users_list"] = []
+    return jsonify({"apps": apps})
 
 
-@app.route("/api/admin/api_keys", methods=["POST"])
+@app.route("/api/admin/sso_apps", methods=["POST"])
 @auth.admin_required
-def api_admin_api_key_create():
-    """Create a key. The plaintext is returned exactly once and never stored."""
+def api_admin_sso_app_create():
+    """Create an SSO app. The secret is returned once and never stored."""
     u = auth.current_user()
     payload = request.json or {}
     name = (payload.get("name") or "").strip()[:60]
+    app_id = (payload.get("app_id") or "").strip()
     if not name:
         return jsonify({"error": "name_required"}), 400
+    if not sso.valid_app_id(app_id):
+        return jsonify({"error": "bad_app_id"}), 400
+    if db.get_sso_app(app_id):
+        return jsonify({"error": "app_id_taken"}), 400
 
-    raw_allowed = payload.get("allowed_usernames")
-    if raw_allowed is None:
-        allowed = ["*"]
-    elif isinstance(raw_allowed, str):
-        allowed = [x.strip() for x in raw_allowed.split(",") if x.strip()]
+    raw_users = payload.get("allow_users")
+    if isinstance(raw_users, str):
+        users = [x.strip() for x in raw_users.split(",") if x.strip()]
+    elif isinstance(raw_users, list):
+        users = [str(x).strip() for x in raw_users if str(x).strip()]
     else:
-        allowed = [str(x).strip() for x in raw_allowed if str(x).strip()]
-    if not allowed:
-        return jsonify({"error": "whitelist_empty"}), 400
-    if "*" not in allowed:
-        for uname in allowed:
-            if not auth.get_user_by_username(uname):
-                return jsonify({"error": "unknown_username", "username": uname}), 400
+        users = []
+    canonical = []
+    for uname in users:
+        target = auth.get_user_by_username(uname)
+        if not target:
+            return jsonify({"error": "unknown_username", "username": uname}), 400
+        canonical.append(target["username"])   # keep the real capitalisation
 
-    # Keys always expire: "never" made a leaked key permanent. 1–3650 days,
-    # default 90 when the caller omits the field (`0` is rejected, not
-    # silently treated as "default").
-    raw_days = payload.get("expires_days")
-    try:
-        days = int(raw_days) if raw_days not in (None, "") else 90
-    except (TypeError, ValueError):
-        return jsonify({"error": "bad_expires_days"}), 400
-    if days < 1 or days > 3650:
-        return jsonify({"error": "bad_expires_days"}), 400
-    expires_at = int(time.time()) + days * 86400
-
-    allowed_ips = (payload.get("allowed_ips") or "").strip()[:500]
-    if allowed_ips:
+    allow_ips = (payload.get("allow_ips") or "").strip()[:500]
+    if allow_ips:
         import ipaddress
-        for part in [p.strip() for p in allowed_ips.split(",") if p.strip()]:
+        for part in [p.strip() for p in allow_ips.split(",") if p.strip()]:
             try:
                 ipaddress.ip_network(part, strict=False)
             except ValueError:
                 return jsonify({"error": "bad_ip", "value": part}), 400
 
-    token, prefix, key_hash = auth.new_api_key()
-    key_id = db.create_api_key(name, prefix, key_hash, u["id"],
-                               _json_mod.dumps(allowed), allowed_ips, expires_at)
-    audit.log(u["id"], "api_key.create", f"api_key:{key_id}",
-              {"name": name, "prefix": prefix, "allowed": allowed,
-               "allowed_ips": allowed_ips, "expires_at": expires_at})
+    # Links never expire (the caller's integration is meant to be permanent).
+    # The per-app TTL columns stay in the schema but are always 0 / ignored.
+    allow_simple = 1 if payload.get("allow_simple_key") else 0
+
+    salt = sso.new_salt()
+    app_pk = db.create_sso_app(app_id, name, salt, u["id"], allow_ips,
+                               _json_mod.dumps(canonical),
+                               0, 0, allow_simple)
+    secret = sso.app_secret(app.secret_key, app_id, salt)
+    audit.log(u["id"], "sso_app.create", f"sso_app:{app_pk}",
+              {"app_id": app_id, "name": name, "allow_ips": allow_ips,
+               "allow_users": canonical, "allow_simple_key": allow_simple})
     return jsonify({
         "ok": True,
-        "id": key_id,
-        "key": token,          # shown once — no endpoint returns it again
-        "prefix": prefix,
-        "expires_at": expires_at,
-        "allowed": allowed,
+        "id": app_pk,
+        "app_id": app_id,
+        "secret": secret,       # shown once — reset_secret is the only way back
+        "allow_users": canonical,
     }), 201
 
 
-@app.route("/api/admin/api_keys/<int:key_id>/revoke", methods=["POST"])
+@app.route("/api/admin/sso_apps/<int:app_pk>/reset_secret", methods=["POST"])
 @auth.admin_required
-def api_admin_api_key_revoke(key_id: int):
+def api_admin_sso_app_reset(app_pk: int):
     u = auth.current_user()
-    if not db.revoke_api_key(key_id):
+    salt = sso.new_salt()
+    row = db.update_sso_app(app_pk, secret_salt=salt)
+    if not row:
         return jsonify({"error": "not_found"}), 404
-    audit.log(u["id"], "api_key.revoke", f"api_key:{key_id}", {})
-    return jsonify({"ok": True})
+    secret = sso.app_secret(app.secret_key, row["app_id"], salt)
+    audit.log(u["id"], "sso_app.reset_secret", f"sso_app:{app_pk}",
+              {"app_id": row["app_id"]})
+    return jsonify({"ok": True, "app_id": row["app_id"], "secret": secret})
+
+
+@app.route("/api/admin/sso_apps/<int:app_pk>/toggle", methods=["POST"])
+@auth.admin_required
+def api_admin_sso_app_toggle(app_pk: int):
+    u = auth.current_user()
+    payload = request.json or {}
+    active = 1 if payload.get("is_active") else 0
+    row = db.update_sso_app(app_pk, is_active=active)
+    if not row:
+        return jsonify({"error": "not_found"}), 404
+    audit.log(u["id"], "sso_app.toggle", f"sso_app:{app_pk}",
+              {"app_id": row["app_id"], "is_active": active})
+    return jsonify({"ok": True, "is_active": active})
 
 
 # ============================================================

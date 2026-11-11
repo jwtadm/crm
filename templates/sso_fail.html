@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>自动登录失败 — CRM</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v={{ static_v }}">
+</head>
+<body class="sso-fail-body">
+  <div class="sso-fail">
+    <div class="sso-fail-icon">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+    </div>
+    <h1>无法自动登录</h1>
+    <p class="sso-fail-msg">{{ message }}</p>
+    <p class="sso-fail-hint">请把这条提示发给发起登录的系统管理员。HTTP {{ status }}</p>
+    <a class="btn btn-ghost btn-sm" href="/login">前往登录页</a>
+  </div>
+</body>
+</html>

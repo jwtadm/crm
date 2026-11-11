@@ -2310,3 +2310,43 @@ select:disabled {
   box-shadow: 0 4px 10px -6px rgba(79,70,229,.8);
 }
 .dp-ok:hover { filter: brightness(1.05); }
+
+/* ─── SSO failure page ───────────────────────────────────────── */
+.sso-fail-body {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.sso-fail {
+  width: min(420px, 100%);
+  text-align: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-xl);
+  box-shadow: var(--shadow-lg);
+  padding: 32px 28px;
+}
+.sso-fail-icon {
+  width: 44px;
+  height: 44px;
+  margin: 0 auto 14px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--red);
+  background: var(--red-light);
+}
+.sso-fail h1 { font-size: 18px; font-weight: 700; color: var(--text); margin-bottom: 10px; }
+.sso-fail-msg {
+  font-size: 13.5px;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+.sso-fail-hint { font-size: 11.5px; color: var(--text-3); margin-bottom: 18px; line-height: 1.6; }

@@ -296,39 +296,34 @@ def _apply_migrations(c: sqlite3.Connection) -> None:
     c.execute("DROP INDEX IF EXISTS idx_people_last_contacted")  # prefix of idx_people_list_sort
     c.execute("DROP INDEX IF EXISTS idx_pa_person")              # prefix of idx_pa_person_cover
 
-    # --- API keys + one-time auto-login tickets ---
-    # Keys are generated on the server and stored as SHA-256 hashes; the
-    # plaintext is shown exactly once at creation. Tickets are single-use and
-    # short-lived so a redirect URL can never be replayed or long-lived.
+    # --- SSO apps (signed-link auto login) ---
+    # Secrets are derived (see lib/sso.py), so only a random salt is stored.
+    # Nonces back the one-time guarantee; they are purged after 30 days.
     c.execute("""
-        CREATE TABLE IF NOT EXISTS api_keys (
+        CREATE TABLE IF NOT EXISTS sso_apps (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            app_id          TEXT NOT NULL UNIQUE,
             name            TEXT NOT NULL,
-            key_prefix      TEXT NOT NULL,
-            key_hash        TEXT NOT NULL UNIQUE,
+            secret_salt     TEXT NOT NULL,
             created_by      INTEGER REFERENCES users(id),
             created_at      INTEGER NOT NULL,
-            last_used_at    INTEGER,
-            use_count       INTEGER NOT NULL DEFAULT 0,
-            expires_at      INTEGER,
+            allow_ips       TEXT NOT NULL DEFAULT '',
+            allow_users     TEXT NOT NULL DEFAULT '[]',
+            allow_simple_key INTEGER NOT NULL DEFAULT 0,
             is_active       INTEGER NOT NULL DEFAULT 1,
-            allowed_usernames TEXT NOT NULL DEFAULT '[]',
-            allowed_ips     TEXT NOT NULL DEFAULT ''
+            last_used_at    INTEGER,
+            use_count       INTEGER NOT NULL DEFAULT 0
         )
     """)
-    c.execute("CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash)")
     c.execute("""
-        CREATE TABLE IF NOT EXISTS login_tickets (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            ticket_hash TEXT NOT NULL UNIQUE,
-            user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-            key_id      INTEGER REFERENCES api_keys(id) ON DELETE SET NULL,
+        CREATE TABLE IF NOT EXISTS sso_nonces (
+            app_id      TEXT NOT NULL,
+            nonce       TEXT NOT NULL,
             created_at  INTEGER NOT NULL,
-            expires_at  INTEGER NOT NULL,
-            used_at     INTEGER
+            PRIMARY KEY (app_id, nonce)
         )
     """)
-    c.execute("CREATE INDEX IF NOT EXISTS idx_login_tickets_exp ON login_tickets(expires_at)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_sso_nonces_created ON sso_nonces(created_at)")
 
 
 # ---------- connection ----------
@@ -2050,86 +2045,86 @@ def get_trends(c: sqlite3.Connection, days: int = 7,
     return result
 
 
-# ---------- API keys / auto-login tickets ----------
+# ---------- SSO apps / nonces ----------
 # Small helpers with literal SQL at the call site (this repo forbids a generic
 # "run this SQL string" wrapper — see the security notes in tools/).
 
-def create_api_key(name: str, key_prefix: str, key_hash: str, created_by: int | None,
-                   allowed_usernames: str, allowed_ips: str, expires_at: int | None) -> int:
+SSO_COLS = ("id, app_id, name, created_by, created_at, allow_ips, allow_users,"
+            " ttl_seconds, allow_admin, allow_simple_key, is_active,"
+            " last_used_at, use_count")
+
+
+def create_sso_app(app_id: str, name: str, secret_salt: str, created_by: int | None,
+                   allow_ips: str, allow_users: str, ttl_seconds: int,
+                   allow_admin: int, allow_simple_key: int) -> int:
     with tx() as c:
         cur = c.execute(
-            "INSERT INTO api_keys (name, key_prefix, key_hash, created_by, created_at,"
-            " expires_at, allowed_usernames, allowed_ips)"
-            " VALUES (?,?,?,?,?,?,?,?)",
-            (name, key_prefix, key_hash, created_by, int(time.time()),
-             expires_at, allowed_usernames, allowed_ips),
+            "INSERT INTO sso_apps (app_id, name, secret_salt, created_by, created_at,"
+            " allow_ips, allow_users, ttl_seconds, allow_admin, allow_simple_key)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (app_id, name, secret_salt, created_by, int(time.time()),
+             allow_ips, allow_users, ttl_seconds, allow_admin, allow_simple_key),
         )
         return int(cur.lastrowid)
 
 
-def list_api_keys() -> list[dict]:
+def list_sso_apps() -> list[dict]:
     with ro() as c:
         rows = c.execute(
-            "SELECT k.id, k.name, k.key_prefix, k.created_by, k.created_at,"
-            "       k.last_used_at, k.use_count, k.expires_at, k.is_active,"
-            "       k.allowed_usernames, k.allowed_ips,"
+            "SELECT s.id, s.app_id, s.name, s.created_by, s.created_at, s.allow_ips,"
+            "       s.allow_users, s.ttl_seconds, s.allow_admin, s.allow_simple_key,"
+            "       s.is_active, s.last_used_at, s.use_count,"
             "       u.username AS creator_username, u.display_name AS creator_display"
-            "  FROM api_keys k LEFT JOIN users u ON u.id = k.created_by"
-            " ORDER BY k.is_active DESC, k.created_at DESC"
+            "  FROM sso_apps s LEFT JOIN users u ON u.id = s.created_by"
+            " ORDER BY s.is_active DESC, s.created_at DESC"
         ).fetchall()
         return [dict(r) for r in rows]
 
 
-def get_api_key_by_hash(key_hash: str) -> dict | None:
+def get_sso_app(app_id: str) -> dict | None:
+    # Includes secret_salt — the login handler needs it to derive the secret.
     with ro() as c:
         row = c.execute(
-            "SELECT id, name, key_prefix, created_by, created_at, last_used_at,"
-            "       use_count, expires_at, is_active, allowed_usernames, allowed_ips"
-            "  FROM api_keys WHERE key_hash = ?",
-            (key_hash,),
+            "SELECT id, app_id, name, secret_salt, created_by, created_at, allow_ips,"
+            "       allow_users, ttl_seconds, allow_admin, allow_simple_key, is_active,"
+            "       last_used_at, use_count"
+            "  FROM sso_apps WHERE app_id = ?",
+            (app_id,),
         ).fetchone()
         return dict(row) if row else None
 
 
-def revoke_api_key(key_id: int) -> bool:
+def update_sso_app(app_pk: int, *, secret_salt: str | None = None,
+                   is_active: int | None = None) -> dict | None:
+    """Only the two mutations the UI needs. Returns the updated row."""
     with tx() as c:
-        cur = c.execute("UPDATE api_keys SET is_active = 0 WHERE id = ? AND is_active = 1",
-                        (key_id,))
-        return cur.rowcount > 0
+        if secret_salt is not None:
+            c.execute("UPDATE sso_apps SET secret_salt = ? WHERE id = ?",
+                      (secret_salt, app_pk))
+        if is_active is not None:
+            c.execute("UPDATE sso_apps SET is_active = ? WHERE id = ?",
+                      (is_active, app_pk))
+        row = c.execute(f"SELECT {SSO_COLS} FROM sso_apps WHERE id = ?",
+                        (app_pk,)).fetchone()
+        return dict(row) if row else None
 
 
-def touch_api_key(key_id: int) -> None:
+def touch_sso_app(app_pk: int) -> None:
     with tx() as c:
-        c.execute("UPDATE api_keys SET last_used_at = ?, use_count = use_count + 1"
-                  " WHERE id = ?", (int(time.time()), key_id))
+        c.execute("UPDATE sso_apps SET last_used_at = ?, use_count = use_count + 1"
+                  " WHERE id = ?", (int(time.time()), app_pk))
 
 
-def create_login_ticket(ticket_hash: str, user_id: int, key_id: int,
-                        expires_at: int) -> None:
+def use_sso_nonce(app_id: str, nonce: str) -> bool:
+    """Atomically claim a nonce. False = it was already used (replay)."""
     now = int(time.time())
     with tx() as c:
-        # Cheap housekeeping on every issue; the table only ever holds tickets
-        # from the last couple of minutes.
-        c.execute("DELETE FROM login_tickets WHERE expires_at < ?", (now,))
-        c.execute(
-            "INSERT INTO login_tickets (ticket_hash, user_id, key_id, created_at, expires_at)"
-            " VALUES (?,?,?,?,?)",
-            (ticket_hash, user_id, key_id, now, expires_at),
+        # Permanent links keep their nonce 30 days, per the SSO contract.
+        c.execute("DELETE FROM sso_nonces WHERE created_at < ?",
+                  (now - 30 * 86400,))
+        cur = c.execute(
+            "INSERT OR IGNORE INTO sso_nonces (app_id, nonce, created_at)"
+            " VALUES (?,?,?)",
+            (app_id, nonce, now),
         )
-
-
-def consume_login_ticket(ticket_hash: str) -> dict | None:
-    """Single-use: marks the ticket used inside the same IMMEDIATE transaction,
-    so two concurrent requests cannot both redeem it."""
-    now = int(time.time())
-    with tx() as c:
-        row = c.execute(
-            "SELECT id, user_id, key_id, expires_at, used_at FROM login_tickets"
-            " WHERE ticket_hash = ?",
-            (ticket_hash,),
-        ).fetchone()
-        if not row or row["used_at"] is not None or row["expires_at"] <= now:
-            return None
-        c.execute("UPDATE login_tickets SET used_at = ? WHERE id = ? AND used_at IS NULL",
-                  (now, row["id"]))
-        return dict(row)
+        return cur.rowcount == 1

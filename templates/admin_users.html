@@ -24,16 +24,17 @@
 
 <div class="card">
   <div class="card-header">
-    <h2>API 密钥</h2>
-    <span class="card-meta" id="keysMeta"></span>
+    <h2>SSO 应用</h2>
+    <span class="card-meta" id="ssoMeta"></span>
     <span style="margin-left:auto;"></span>
-    <button class="btn btn-accent btn-sm" id="newKeyBtn">新建密钥</button>
+    <button class="btn btn-accent btn-sm" id="newSsoBtn">添加应用</button>
   </div>
   <p class="hint" style="margin:-4px 0 12px;">
-    供第三方系统调用 <code>POST /api/auth/auto_login</code> 免密跳转登录。
-    密钥只在创建时显示一次，服务端只保存哈希。白名单可按用户名和 IP 限制。
+    外部系统（OA / ERP / 企业微信工作台）用 <code>app_id + 密钥</code> 生成签名链接，
+    用户点开即登录（<code>GET /sso/login?app_id=…&amp;username=…&amp;ts=…&amp;nonce=…&amp;sign=…</code>）。
+    密钥只在创建或重置时显示一次。
   </p>
-  <div id="keysBox"></div>
+  <div id="ssoBox"></div>
 </div>
 
 <div class="card">
@@ -94,52 +95,64 @@
     </div>
   </div>
 </div>
-<!-- 新建 API 密钥 -->
-<div id="newKeyModal" class="modal-backdrop hidden">
-  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="newKeyTitle">
+<!-- 新建 SSO 应用 -->
+<div id="newSsoModal" class="modal-backdrop hidden">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="newSsoTitle">
     <div class="modal-head">
-      <h2 id="newKeyTitle">新建 API 密钥</h2>
-      <button class="btn btn-ghost btn-sm" onclick="closeNewKey()">✕</button>
+      <h2 id="newSsoTitle">添加 SSO 应用</h2>
+      <button class="btn btn-ghost btn-sm" onclick="closeNewSso()">✕</button>
     </div>
     <div class="modal-body">
-      <p class="hint">密钥只显示一次。创建后请立刻保存到调用方服务器的环境变量，例如 <code>CRM_API_KEY</code>。</p>
+      <p class="hint">每个对接方单独建一个应用，出问题可单独禁用或重置，不影响其他系统。生成的登录链接**永久有效**（每条链接一次性使用）。</p>
       <div class="add-grid">
-        <label>名称 *<input type="text" id="nkName" placeholder="如 官网单点登录" autocomplete="off"></label>
-        <label>有效期（天，必填 1–3650）<input type="number" id="nkDays" value="90" min="1" max="3650"></label>
-        <label style="grid-column:1/-1;">允许登录的用户名（逗号分隔，<code>*</code> 表示全部）
-          <input type="text" id="nkAllowed" value="*" placeholder="alice, bob 或 *" autocomplete="off">
-        </label>
+        <label>应用名称 *<input type="text" id="nsName" placeholder="如 企业微信工作台" autocomplete="off"></label>
+        <label>应用标识 app_id *<input type="text" id="nsAppId" placeholder="字母数字 _ -，2-32 位" autocomplete="off"></label>
         <label style="grid-column:1/-1;">IP 白名单（可选，逗号分隔，支持 CIDR）
-          <input type="text" id="nkIps" placeholder="10.0.0.0/8, 203.0.113.7" autocomplete="off">
+          <input type="text" id="nsIps" placeholder="10.0.0.0/8, 203.0.113.7；留空=不限制" autocomplete="off">
+        </label>
+        <label style="grid-column:1/-1;">允许登录的账号（逗号分隔，留空 = 所有账号，含超管）
+          <input type="text" id="nsUsers" placeholder="alice, bob；留空=所有账号（含 admin）" autocomplete="off">
+        </label>
+        <label style="grid-column:1/-1;">
+          <span style="display:flex; align-items:center; gap:6px;">
+            <input type="checkbox" id="nsSimpleKey"> 允许简单 key 模式（无防重放，仅内网临时用）
+          </span>
         </label>
       </div>
-      <div id="nkError" class="error-msg" style="display:none;"></div>
+      <div id="nsError" class="error-msg" style="display:none;"></div>
     </div>
     <div class="modal-foot">
-      <button class="btn btn-ghost btn-sm" onclick="closeNewKey()">取消</button>
+      <button class="btn btn-ghost btn-sm" onclick="closeNewSso()">取消</button>
       <span class="spacer"></span>
-      <button class="btn btn-accent" id="nkSubmitBtn" onclick="submitNewKey()">创建密钥</button>
+      <button class="btn btn-accent" id="nsSubmitBtn" onclick="submitNewSso()">创建应用</button>
     </div>
   </div>
 </div>
 
 <!-- 密钥一次性展示 -->
-<div id="keyModal" class="modal-backdrop hidden">
-  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="keyTitle">
+<div id="ssoSecretModal" class="modal-backdrop hidden">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="ssoSecretTitle">
     <div class="modal-head">
-      <h2 id="keyTitle">API 密钥</h2>
-      <button class="btn btn-ghost btn-sm" onclick="closeKeyModal()">✕</button>
+      <h2 id="ssoSecretTitle">应用密钥</h2>
+      <button class="btn btn-ghost btn-sm" onclick="closeSsoSecret()">✕</button>
     </div>
     <div class="modal-body">
-      <p class="hint" id="keyHint">只显示这一次，关闭后无法再次查看。请保存到调用方服务器的环境变量。</p>
-      <div class="copy-field">
-        <code id="keyValue"></code>
-        <button class="btn btn-ghost btn-sm" onclick="copyKeyValue()">复制</button>
+      <p class="hint" id="ssoSecretHint">只显示这一次，关闭后无法再查看；忘记只能「重置密钥」（旧密钥立即失效）。</p>
+      <div class="copy-field" style="margin-bottom:8px;">
+        <span style="color:var(--text-3);font-size:11.5px;min-width:52px;">app_id</span>
+        <code id="ssoAppIdValue"></code>
+        <button class="btn btn-ghost btn-sm" onclick="copyText('ssoAppIdValue')">复制</button>
       </div>
+      <div class="copy-field">
+        <span style="color:var(--text-3);font-size:11.5px;min-width:52px;">密钥</span>
+        <code id="ssoSecretValue"></code>
+        <button class="btn btn-ghost btn-sm" onclick="copyText('ssoSecretValue')">复制</button>
+      </div>
+      <p class="hint" style="margin-top:10px;">密钥只放对接方服务器的环境变量里，例如 <code>SSO_SECRET</code>；不要写进前端、仓库或日志。</p>
     </div>
     <div class="modal-foot">
       <span class="spacer"></span>
-      <button class="btn btn-accent btn-sm" onclick="closeKeyModal()">我已保存</button>
+      <button class="btn btn-accent btn-sm" onclick="closeSsoSecret()">我已保存</button>
     </div>
   </div>
 </div>
@@ -334,7 +347,7 @@ async function loadAudit() {
 }
 
 document.getElementById('newUserBtn').onclick = openNewUser;
-document.getElementById('newKeyBtn').onclick = openNewKey;
+document.getElementById('newSsoBtn').onclick = openNewSso;
 document.getElementById('refreshBtn').onclick = loadUsers;
 document.getElementById('auditRefreshBtn').onclick = loadAudit;
 document.getElementById('migrateBtn').onclick = async () => {
@@ -351,105 +364,106 @@ document.getElementById('migrateBtn').onclick = async () => {
   loadUsers();
 };
 
-// ── API 密钥 ────────────────────────────────────────────────
-let _keyList = [];
+// ── SSO 应用 ────────────────────────────────────────────────
+let _ssoList = [];
 
-async function loadKeys() {
-  const box = document.getElementById('keysBox');
+async function loadSsoApps() {
+  const box = document.getElementById('ssoBox');
   try {
-    const r = await fetch('/api/admin/api_keys');
+    const r = await fetch('/api/admin/sso_apps');
     const d = await r.json();
     if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
-    _keyList = d.keys || [];
-    renderKeys();
+    _ssoList = d.apps || [];
+    renderSsoApps();
   } catch (e) {
     box.innerHTML = `<div class="error-msg">加载失败：${escapeHtml(e.message)}</div>`;
   }
 }
 
-function renderKeys() {
-  const box = document.getElementById('keysBox');
-  const meta = document.getElementById('keysMeta');
-  const now = Math.floor(Date.now() / 1000);
-  const active = _keyList.filter(k => k.is_active && k.expires_at && k.expires_at > now).length;
-  meta.textContent = _keyList.length ? `${active} 个可用 / 共 ${_keyList.length} 个` : '';
-  if (!_keyList.length) {
-    box.innerHTML = '<div class="empty">还没有 API 密钥。需要第三方免密登录时再创建。</div>';
+function renderSsoApps() {
+  const box = document.getElementById('ssoBox');
+  const meta = document.getElementById('ssoMeta');
+  const active = _ssoList.filter(a => a.is_active).length;
+  meta.textContent = _ssoList.length ? `${active} 个启用 / 共 ${_ssoList.length} 个` : '';
+  if (!_ssoList.length) {
+    box.innerHTML = '<div class="empty">还没有 SSO 应用。每个对接方单独建一个。</div>';
     return;
   }
   box.innerHTML = `<table class="crm-table">
     <thead><tr>
-      <th>名称</th><th>前缀</th><th>允许登录</th><th>有效期</th>
-      <th>最近使用</th><th class="num">调用次数</th><th>状态</th><th style="width:90px;">操作</th>
+      <th>名称 / app_id</th><th>允许登录</th><th>IP 白名单</th>
+      <th>最近使用</th><th class="num">次数</th><th>状态</th><th style="width:190px;">操作</th>
     </tr></thead><tbody>
-    ${_keyList.map(k => {
-      const expired = k.expires_at && k.expires_at <= now;
-      const ok = k.is_active && !expired;
-      const who = (k.allowed || []).includes('*') ? '全部用户'
-        : (k.allowed || []).map(escapeHtml).join(', ');
-      const status = !k.is_active
-        ? '<span class="pill">已撤销</span>'
-        : (!k.expires_at || expired) ? '<span class="pill">已过期</span>' : '<span class="pill pill-ok">可用</span>';
+    ${_ssoList.map(a => {
+      const users = (a.allow_users_list || []).length
+        ? a.allow_users_list.map(escapeHtml).join(', ')
+        : '所有账号（含超管）';
+      const status = a.is_active
+        ? '<span class="pill pill-ok">启用</span>'
+        : '<span class="pill">已禁用</span>';
       return `<tr>
-        <td><b>${escapeHtml(k.name)}</b>${
-          k.allowed_ips ? `<div class="hint" style="margin:2px 0 0;">IP: ${escapeHtml(k.allowed_ips)}</div>` : ''
-        }</td>
-        <td><code>${escapeHtml(k.key_prefix)}…</code></td>
-        <td style="max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(who)}">${escapeHtml(who)}</td>
-        <td>${k.expires_at ? fmtTime(k.expires_at) : '未设置'}</td>
-        <td>${k.last_used_at ? fmtTime(k.last_used_at) : '—'}</td>
-        <td class="num">${k.use_count || 0}</td>
+        <td><b>${escapeHtml(a.name)}</b>
+          <div class="hint" style="margin:2px 0 0;"><code>${escapeHtml(a.app_id)}</code>${
+            a.allow_simple_key ? ' · 简单 key' : ''
+          }</div></td>
+        <td style="max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(users)}">${escapeHtml(users)}</td>
+        <td style="max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(a.allow_ips || '不限制')}">${escapeHtml(a.allow_ips || '不限制')}</td>
+        <td>${a.last_used_at ? fmtTime(a.last_used_at) : '—'}</td>
+        <td class="num">${a.use_count || 0}</td>
         <td>${status}</td>
-        <td>${ok ? `<button class="btn btn-ghost btn-sm" onclick="revokeKey(${k.id})">撤销</button>` : '—'}</td>
+        <td>
+          <button class="btn btn-ghost btn-sm" onclick="toggleSsoApp(${a.id}, ${a.is_active ? 0 : 1})">${a.is_active ? '禁用' : '启用'}</button>
+          <button class="btn btn-ghost btn-sm" onclick="resetSsoSecret(${a.id})">重置密钥</button>
+        </td>
       </tr>`;
     }).join('')}
     </tbody></table>`;
 }
 
-function openNewKey() {
-  ['nkName', 'nkIps'].forEach(id => document.getElementById(id).value = '');
-  document.getElementById('nkDays').value = '90';
-  document.getElementById('nkAllowed').value = '*';
-  document.getElementById('nkError').style.display = 'none';
-  document.getElementById('newKeyModal').classList.remove('hidden');
-  document.getElementById('nkName').focus();
+function openNewSso() {
+  ['nsName', 'nsAppId', 'nsIps', 'nsUsers'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('nsSimpleKey').checked = false;
+  document.getElementById('nsError').style.display = 'none';
+  document.getElementById('newSsoModal').classList.remove('hidden');
+  document.getElementById('nsName').focus();
 }
-function closeNewKey() { document.getElementById('newKeyModal').classList.add('hidden'); }
+function closeNewSso() { document.getElementById('newSsoModal').classList.add('hidden'); }
 
-async function submitNewKey() {
-  const btn = document.getElementById('nkSubmitBtn');
-  const errBox = document.getElementById('nkError');
+async function submitNewSso() {
+  const btn = document.getElementById('nsSubmitBtn');
+  const errBox = document.getElementById('nsError');
   const payload = {
-    name: document.getElementById('nkName').value.trim(),
-    expires_days: Number(document.getElementById('nkDays').value || 0),
-    allowed_usernames: document.getElementById('nkAllowed').value.trim() || '*',
-    allowed_ips: document.getElementById('nkIps').value.trim(),
+    name: document.getElementById('nsName').value.trim(),
+    app_id: document.getElementById('nsAppId').value.trim(),
+    allow_ips: document.getElementById('nsIps').value.trim(),
+    allow_users: document.getElementById('nsUsers').value.trim(),
+    allow_simple_key: document.getElementById('nsSimpleKey').checked,
   };
   errBox.style.display = 'none';
-  if (!payload.name) { errBox.textContent = '名称必填'; errBox.style.display = ''; return; }
+  if (!payload.name || !payload.app_id) {
+    errBox.textContent = '应用名称和 app_id 必填';
+    errBox.style.display = '';
+    return;
+  }
   setBusy(btn, true);
   try {
-    const r = await fetch('/api/admin/api_keys', {
+    const r = await fetch('/api/admin/sso_apps', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(payload),
     });
     const d = await r.json();
     if (!r.ok) {
       const map = {
+        bad_app_id: 'app_id 只能是字母数字 _ -，2-32 位',
+        app_id_taken: 'app_id 已被占用',
         unknown_username: `用户名不存在：${d.username || ''}`,
-        whitelist_empty: '白名单不能为空（全部用户请填 *）',
         bad_ip: `IP 格式不对：${d.value || ''}`,
-        bad_expires_days: '有效期需在 1–3650 天之间（不允许永久）',
       };
       throw new Error(map[d.error] || d.detail || d.error || `HTTP ${r.status}`);
     }
-    closeNewKey();
-    document.getElementById('keyValue').textContent = d.key;
-    document.getElementById('keyHint').textContent =
-      `只显示这一次。白名单：${(d.allowed || []).includes('*') ? '全部用户' : (d.allowed || []).join(', ')}` +
-      (d.expires_at ? `；有效期至 ${fmtTime(d.expires_at)}` : '') + '。';
-    document.getElementById('keyModal').classList.remove('hidden');
-    loadKeys();
+    closeNewSso();
+    showSsoSecret(d.app_id, d.secret);
+    loadSsoApps();
     loadAudit();
   } catch (e) {
     errBox.textContent = e.message;
@@ -459,21 +473,40 @@ async function submitNewKey() {
   }
 }
 
-function closeKeyModal() { document.getElementById('keyModal').classList.add('hidden'); }
-function copyKeyValue() {
-  const text = document.getElementById('keyValue').textContent;
+function showSsoSecret(appId, secret) {
+  document.getElementById('ssoAppIdValue').textContent = appId;
+  document.getElementById('ssoSecretValue').textContent = secret;
+  document.getElementById('ssoSecretModal').classList.remove('hidden');
+}
+function closeSsoSecret() { document.getElementById('ssoSecretModal').classList.add('hidden'); }
+
+function copyText(id) {
+  const text = document.getElementById(id).textContent;
   navigator.clipboard?.writeText(text).then(
     () => toast('已复制', 'ok'),
     () => toast('复制失败，请手动选择', 'err'));
 }
 
-async function revokeKey(id) {
-  const k = _keyList.find(x => x.id === id);
-  if (!confirm(`撤销密钥「${k ? k.name : id}」？\n\n正在使用它的系统会立刻无法登录，且无法恢复。`)) return;
-  const r = await fetch(`/api/admin/api_keys/${id}/revoke`, {method: 'POST'});
-  if (!r.ok) { toast('撤销失败', 'err'); return; }
-  toast('已撤销', 'ok');
-  loadKeys();
+async function resetSsoSecret(id) {
+  const a = _ssoList.find(x => x.id === id);
+  if (!confirm(`重置「${a ? a.name : id}」的密钥？\n\n旧密钥立即失效，正在使用它的系统会登录失败。`)) return;
+  const r = await fetch(`/api/admin/sso_apps/${id}/reset_secret`, {method: 'POST'});
+  const d = await r.json();
+  if (!r.ok) { toast('重置失败', 'err'); return; }
+  showSsoSecret(d.app_id, d.secret);
+  loadAudit();
+}
+
+async function toggleSsoApp(id, active) {
+  const a = _ssoList.find(x => x.id === id);
+  if (!confirm(`${active ? '启用' : '禁用'}「${a ? a.name : id}」？${active ? '' : '\n\n禁用后该应用所有请求都会被拒绝。'}`)) return;
+  const r = await fetch(`/api/admin/sso_apps/${id}/toggle`, {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({is_active: !!active}),
+  });
+  if (!r.ok) { toast('操作失败', 'err'); return; }
+  toast(active ? '已启用' : '已禁用', 'ok');
+  loadSsoApps();
   loadAudit();
 }
 
@@ -482,16 +515,16 @@ document.getElementById('newUserModal').addEventListener('keydown', e => {
   if (e.key === 'Enter') submitNewUser();
   if (e.key === 'Escape') closeNewUser();
 });
-document.getElementById('newKeyModal').addEventListener('keydown', e => {
-  if (e.key === 'Enter') submitNewKey();
-  if (e.key === 'Escape') closeNewKey();
+document.getElementById('newSsoModal').addEventListener('keydown', e => {
+  if (e.key === 'Enter') submitNewSso();
+  if (e.key === 'Escape') closeNewSso();
 });
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape' && !document.getElementById('keyModal').classList.contains('hidden')) closeKeyModal();
+  if (e.key === 'Escape' && !document.getElementById('ssoSecretModal').classList.contains('hidden')) closeSsoSecret();
 });
 
 loadUsers();
 loadAudit();
-loadKeys();
+loadSsoApps();
 </script>
 {% endblock %}

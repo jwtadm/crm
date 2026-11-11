@@ -6,8 +6,6 @@ fingerprint (`sid`). Every request we re-load the user from DB to enforce
 installed via Flask).
 """
 from __future__ import annotations
-import hashlib
-import ipaddress
 import secrets
 import time
 from collections import deque
@@ -374,61 +372,3 @@ def rate_limit(bucket: str, key: str, max_hits: int, window_seconds: int) -> boo
 
 def reset_rate(bucket: str, key: str) -> None:
     _RATE_BUCKETS.pop((bucket, key), None)
-
-
-# ---------- API keys (auto-login) ----------
-# The plaintext key exists only in the creation response and in the caller's
-# environment; the database stores a SHA-256 of a 256-bit random token, so a
-# leaked DB does not yield usable keys.
-
-API_KEY_PREFIX = "crm_"
-
-
-def new_api_key() -> tuple[str, str, str]:
-    """Return (plaintext, display_prefix, hash)."""
-    token = API_KEY_PREFIX + secrets.token_urlsafe(32)
-    return token, token[:12], hashlib.sha256(token.encode("utf-8")).hexdigest()
-
-
-def hash_api_key(token: str) -> str:
-    return hashlib.sha256(token.encode("utf-8")).hexdigest()
-
-
-def key_allows_user(key: dict, username: str) -> bool:
-    """Whitelist check. Stored as a JSON array of lowercase usernames;
-    ["*"] grants every active user. An empty list denies everyone — the
-    create endpoint defaults an omitted field to ["*"], so a stored empty
-    list only happens if someone explicitly asked for an empty whitelist."""
-    import json
-    try:
-        allowed = json.loads(key.get("allowed_usernames") or "[]")
-    except (TypeError, ValueError):
-        return False
-    if "*" in allowed:
-        return True
-    return username.strip().lower() in {str(a).strip().lower() for a in allowed}
-
-
-def key_allows_ip(key: dict, ip: str) -> bool:
-    """Optional IP allowlist: comma-separated exact addresses or CIDR blocks.
-    Empty means any IP."""
-    raw = (key.get("allowed_ips") or "").strip()
-    if not raw:
-        return True
-    try:
-        addr = ipaddress.ip_address((ip or "").split(",")[0].strip())
-    except ValueError:
-        return False
-    for part in raw.split(","):
-        part = part.strip()
-        if not part:
-            continue
-        try:
-            if "/" in part:
-                if addr in ipaddress.ip_network(part, strict=False):
-                    return True
-            elif addr == ipaddress.ip_address(part):
-                return True
-        except ValueError:
-            continue
-    return False
