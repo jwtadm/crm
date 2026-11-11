@@ -74,7 +74,8 @@ CREATE INDEX IF NOT EXISTS idx_pa_person   ON platform_accounts(person_id);
 CREATE INDEX IF NOT EXISTS idx_people_email ON people(email);
 -- Performance indexes for common queries (filtering/sorting)
 CREATE INDEX IF NOT EXISTS idx_people_status ON people(status);
-CREATE INDEX IF NOT EXISTS idx_people_assigned ON people(assigned_user_id);
+-- idx_people_assigned is created in _apply_migrations: the column only exists
+-- after the migration ALTERs, so this index cannot be built at SCHEMA time.
 CREATE INDEX IF NOT EXISTS idx_people_created_at ON people(created_at);
 CREATE INDEX IF NOT EXISTS idx_people_updated_at ON people(updated_at);
 CREATE INDEX IF NOT EXISTS idx_people_last_contacted ON people(last_contacted_at);  -- default sort column
@@ -84,8 +85,9 @@ CREATE INDEX IF NOT EXISTS idx_pa_follower ON platform_accounts(follower_count);
 CREATE INDEX IF NOT EXISTS idx_pa_list_sort ON platform_accounts(platform, follower_count DESC, updated_at DESC);
 -- Composite sort index for list_people default ORDER BY last_contacted_at DESC, updated_at DESC.
 CREATE INDEX IF NOT EXISTS idx_people_list_sort ON people(last_contacted_at DESC, updated_at DESC);
-CREATE INDEX IF NOT EXISTS idx_email_log_person ON email_log(person_id);            -- stats JOIN
-CREATE INDEX IF NOT EXISTS idx_followup_actor ON followup_logs(actor_id, created_at);
+-- idx_email_log_person / idx_followup_actor are created in _apply_migrations:
+-- their tables are defined later in this script, so the indexes cannot be
+-- built here on a fresh database.
 
 CREATE TABLE IF NOT EXISTS email_log (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -218,6 +220,9 @@ def _apply_migrations(c: sqlite3.Connection) -> None:
         c.execute("ALTER TABLE people ADD COLUMN previous_status TEXT")
     if "intent" not in people:  # 合作强度高/中/低/无意愿; NULL = 未评估
         c.execute("ALTER TABLE people ADD COLUMN intent TEXT")
+    # Index on a migrated column — cannot live in SCHEMA because on a fresh
+    # database the column does not exist until the ALTERs above have run.
+    c.execute("CREATE INDEX IF NOT EXISTS idx_people_assigned ON people(assigned_user_id)")
 
     users = _columns_of(c, "users")
     if "reply_to_email" not in users:  # per-staff "客户回信应该回到这" 邮箱
@@ -253,6 +258,12 @@ def _apply_migrations(c: sqlite3.Connection) -> None:
         """)
         c.execute("CREATE INDEX idx_status_events_actor ON status_events(actor_id, created_at)")
         c.execute("CREATE INDEX idx_status_events_status ON status_events(new_status, created_at)")
+
+    # Indexes whose tables are defined later in the SCHEMA script (email_log,
+    # followup_logs) — on a fresh database they cannot be created there. Safe
+    # to run on every boot.
+    c.execute("CREATE INDEX IF NOT EXISTS idx_email_log_person ON email_log(person_id)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_followup_actor ON followup_logs(actor_id, created_at)")
 
 
 # ---------- connection ----------
