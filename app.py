@@ -68,6 +68,32 @@ def _inject_static_version():
     return {"static_v": STATIC_VERSION}
 
 
+@app.context_processor
+def _inject_shell_identity():
+    """Render the nav identity into the page instead of waiting for an API call.
+
+    Every page used to paint an empty header (no user, no admin links) until
+    /api/bootstrap came back, and /people deliberately blocked its list load on
+    that same wait. With the identity in the HTML the first paint is complete:
+    admin links, user block and staff list are correct before any JS runs.
+    """
+    u = auth.current_user()
+    if not u:
+        return {"boot_user": None, "boot_staff": []}
+    boot_user = {k: u.get(k) for k in ("id", "username", "display_name", "role",
+                                       "is_active", "must_change_pw")}
+    boot_staff = (auth.list_active_staff_and_admins()
+                  if u.get("role") == "admin" else [])
+    # Nav counters are one cheap aggregate query; rendering them with the page
+    # avoids the header numbers appearing a moment after everything else.
+    try:
+        boot_stats = _stats()
+    except Exception:
+        boot_stats = None
+    return {"boot_user": boot_user, "boot_staff": boot_staff,
+            "boot_stats": boot_stats}
+
+
 @app.after_request
 def _cache_headers(resp):
     path = request.path

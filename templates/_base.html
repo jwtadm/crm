@@ -14,6 +14,13 @@ try {
   }
 } catch (e) {}
 </script>
+<!-- Identity is rendered with the page so the header never appears empty
+     while /api/bootstrap is in flight; page scripts can also start their
+     first data request immediately instead of waiting for it. -->
+<script>
+window.CURRENT_USER = {{ boot_user|tojson }};
+window.STAFF_LIST = {{ boot_staff|tojson }};
+</script>
 </head>
 <body data-active="{{ active or '' }}">
 <!-- 全局加载条：所有 fetch 共用，慢请求才出现，避免每点一下闪一下 -->
@@ -57,7 +64,7 @@ try {
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/></svg>
       <span class="nav-label">我的</span>
     </a>
-    <div class="nav-stats" id="navStatsBar"></div>
+    <div class="nav-stats" id="navStatsBar">{% if boot_stats %}<span class="nav-stat"><b>{{ boot_stats.people }}</b>人</span><span class="nav-stat"><b>{{ boot_stats.total }}</b>账号</span>{% for p, label, cls in [('instagram', 'IG', 'is-ig'), ('tiktok', 'TikTok', 'is-tt'), ('x', 'X', 'is-x')] %}<span class="nav-stat {{ cls }}"><b>{{ boot_stats.by_platform.get(p, 0) if boot_stats.by_platform else 0 }}</b>{{ label }}</span>{% endfor %}{% endif %}</div>
     <div class="nav-user" id="navUser"></div>
   </div>
 </nav>
@@ -67,7 +74,7 @@ try {
 <script>
 const PLATFORM_LABEL = {instagram: 'IG', tiktok: 'TikTok', x: 'X'};
 const ALL_PLATFORMS = ['instagram', 'tiktok', 'x'];
-window.CURRENT_USER = null;
+window.CURRENT_USER = window.CURRENT_USER || null;
 
 // ── Global request lifecycle: abort in-flight requests on page unload ──
 let _pageAC = new AbortController();
@@ -250,6 +257,13 @@ function renderNavUser(u) {
 }
 
 refreshShell();
+
+// Paint the identity that came with the HTML right away (refreshShell above
+// will simply repaint the same thing when bootstrap lands).
+if (window.CURRENT_USER) {
+  renderNavUser(window.CURRENT_USER);
+  applyRoleVisibility();
+}
 
 // When the nav collapses to icons (<=1020px) the labels are display:none, so
 // give every link a native tooltip with the text it no longer shows.

@@ -316,6 +316,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 async function initUser() {
+  // Identity ships with the page now; only fall back if it is missing.
+  if (window.CURRENT_USER) return;
   try {
     const r = await fetch('/api/auth/me');
     const d = await r.json();
