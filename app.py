@@ -1026,6 +1026,32 @@ def api_people_bulk_assign():
 EMAIL_JOBS: dict[str, dict] = {}    # job_id -> live job dict (in-memory mirror of DB row)
 EMAIL_BATCH_MAX = 100
 
+# The three job stores below are caches, not the source of truth (payload_json
+# is checkpointed to SQLite and the poll endpoints fall back to it). They used
+# to grow forever: one entry per job ever run in this process, each holding the
+# job's id snapshot plus its capped 200-entry log. Kept bounded here so a
+# long-running installation doesn't accumulate memory in every worker.
+_JOB_CACHE_KEEP = 20
+
+
+def _remember_job(store: dict[str, dict], job: dict) -> None:
+    """Insert into a job cache, evicting the oldest *finished* jobs.
+
+    Never evicts a running/interrupted job: the worker thread holds the same
+    object and keeps mutating it in place.
+    """
+    store[job["id"]] = job
+    if len(store) <= _JOB_CACHE_KEEP:
+        return
+    for k in list(store.keys()):        # dicts keep insertion order
+        if len(store) <= _JOB_CACHE_KEEP:
+            break
+        if k == job["id"]:
+            continue
+        if store[k].get("status") in ("running", "interrupted"):
+            continue
+        store.pop(k, None)
+
 
 def _save_email_job(job: dict, created_by: int) -> None:
     with db.tx() as c:
@@ -1220,7 +1246,7 @@ def api_email_send_batch():
         "subject_t": subject_t,
         "body_t": body_t,
     }
-    EMAIL_JOBS[job_id] = job
+    _remember_job(EMAIL_JOBS, job)
     _save_email_job(job, u["id"])
 
     # Resolve sender's per-staff Reply-To so the recipients' replies land in
@@ -1350,7 +1376,7 @@ def api_email_job_resume(job_id: str):
 
     sender_full = auth.get_user(u["id"]) or {}
     sender_reply_to = (sender_full.get("reply_to_email") or "").strip() or None
-    EMAIL_JOBS[job_id] = job
+    _remember_job(EMAIL_JOBS, job)
     threading.Thread(
         target=_run_email_job,
         args=(job, owned, job["subject_t"], job["body_t"],
@@ -2191,7 +2217,7 @@ def api_similarity_bulk_start():
             "job_status": (active or {}).get("status"),
         }), 409
 
-    SIMILARITY_JOBS[job["id"]] = job
+    _remember_job(SIMILARITY_JOBS, job)
     audit.log(u["id"], "similarity_bulk.start", f"job:{job['id']}",
               {"seed_count": len(seeds), "statuses": statuses})
 
@@ -2244,7 +2270,7 @@ def api_similarity_bulk_resume(job_id: str):
     job.pop("interrupted_at", None)
     job.pop("interrupted_reason", None)
     bulk_similarity.save_job(job, created_by)
-    SIMILARITY_JOBS[job_id] = job
+    _remember_job(SIMILARITY_JOBS, job)
 
     u = auth.current_user()
     audit.log(u["id"], "similarity_bulk.resume", f"job:{job_id}",
@@ -2369,7 +2395,7 @@ def api_hydrate_bulk_start():
             "job_status": (active or {}).get("status"),
         }), 409
 
-    HYDRATE_JOBS[job["id"]] = job
+    _remember_job(HYDRATE_JOBS, job)
     audit.log(u["id"], "hydrate_bulk.start", f"job:{job['id']}",
               {"count": len(rows), "statuses": statuses})
 
@@ -2414,7 +2440,7 @@ def api_hydrate_bulk_resume(job_id: str):
     job.pop("interrupted_at", None)
     job.pop("interrupted_reason", None)
     bulk_hydrate.save_job(job, created_by)
-    HYDRATE_JOBS[job_id] = job
+    _remember_job(HYDRATE_JOBS, job)
 
     u = auth.current_user()
     audit.log(u["id"], "hydrate_bulk.resume", f"job:{job_id}",

@@ -291,6 +291,24 @@ def user_owns_account(user: dict, account_id: int) -> bool:
 # ---------- rate limit (in-memory; sliding window) ----------
 
 _RATE_BUCKETS: dict[tuple[str, str], deque] = {}
+# Each distinct (bucket, key) leaves a dict entry behind forever — the deque is
+# pruned on use but the key is not. Normal use adds a handful (one per staff
+# username, one per office IP); a scanner hitting /login or /register from many
+# IPs would grow it without bound. Sweep the dead keys once the dict gets big.
+_RATE_SWEEP_AT = 2000
+
+
+def _sweep_rate_buckets(now: float) -> None:
+    """Drop entries that can no longer affect any decision.
+
+    Every bucket in use has a 60-second window, so once an entry's newest hit
+    is older than that it is dead weight. Called only when the dict has grown
+    past _RATE_SWEEP_AT, so it stays off the hot path.
+    """
+    horizon = now - 65          # widest window (60s) + slack
+    for k, dq in list(_RATE_BUCKETS.items()):
+        if not dq or dq[-1] < horizon:
+            _RATE_BUCKETS.pop(k, None)
 
 
 def rate_limit(bucket: str, key: str, max_hits: int, window_seconds: int) -> bool:
@@ -303,6 +321,8 @@ def rate_limit(bucket: str, key: str, max_hits: int, window_seconds: int) -> boo
     if len(dq) >= max_hits:
         return False
     dq.append(now)
+    if len(_RATE_BUCKETS) > _RATE_SWEEP_AT:
+        _sweep_rate_buckets(now)
     return True
 
 
