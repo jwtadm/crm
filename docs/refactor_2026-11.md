@@ -122,6 +122,46 @@
 
 ---
 
+## 三之三、全量体检（86 个路由）
+
+`tools/perf_audit.py` 遍历 `app.url_map`，覆盖全部路由并测并发/多进程。
+
+| 分类 | 数量 | 中位 | 最差 p95 |
+|---|---|---|---|
+| 服务端渲染页面 | 12 | 2.5ms | 3.0ms |
+| GET 接口（含参数变体） | 35 | 2.5ms | 78ms（按粉丝数排序） |
+| 写接口 | 18 | 4.1ms | 19ms（hydrate） |
+
+**没有任何读路径超过 100ms**（唯一的例外是下面的一次性重操作）。
+最慢的六个读路径：
+
+```
+/api/people/list?order=followers   p95 78ms   全量 MAX(follower_count) 后排序
+/api/people/match_ids?status=待联系  p95 62ms   4.3 万行「全选」, 返回 3.2 万个 id
+/api/stats?range=all               p95 60ms   全部时间范围
+/api/similarity/bulk/estimate      p95 43ms
+/api/people/list?q=anna            p95 39ms   4 个前导通配 LIKE
+```
+
+**并发**：8 线程读/写全部 0 错误；写并发 8×8 p95 175ms（WAL + busy_timeout
+把 SQLite 单写锁的排队吸收成了延迟，没有出现 "database is locked"）。
+
+**多进程**（这才是生产的 8 个 gunicorn worker 形态）：
+
+| 进程数 | 吞吐 | 并行度 |
+|---|---|---|
+| 1 | 41 req/s | 1.00x |
+| 2 | 73 req/s | 1.99x |
+| 4 | 123 req/s | 3.94x |
+| 8 | **184 req/s** | **7.68x** |
+
+近线性扩展。注意：单进程内多线程的并发数字（`/api/stats` 565ms、`match_ids` 2.1s）
+是因为 8 个线程共享一个 GIL，**不代表生产**——生产的 8 个进程各自独立。
+这个坑我自己先踩了一次（启动开销污染导致误算成 2.03x），修法是让子进程等到
+统一发令时刻再开始，只量工作期。
+
+---
+
 ## 四、验证方法
 
 1. **`tools/baseline_capture.py`** — 对 54 个只读请求做 JSON 字节快照 + 耗时 + SQL/连接计数。
@@ -189,6 +229,9 @@ ssh mcz "systemctl restart ig-scraper"
    冗余到 `people` 上，同样有漂移风险。两者都是"结构换速度"，建议等有真实抱怨再说。
 4. `email_log` 全程没有 INSERT，所以看板的"发送邮件/成功"结构性恒为 0。补写入会让统计数字
    从 0 变成真实值 —— 属口径变更，需产品确认后再改。
-5. `/api/db/export` 导出 45k 行耗时约 25s，瓶颈在 openpyxl 逐单元格样式，不在 SQL。
+5. `/api/db/export` 导出 45k 行耗时约 24s（全量体检里唯一的重操作），瓶颈在 openpyxl
+   逐单元格创建（45k×15 = 67.5 万格；cProfile 显示 135 万次样式赋值、540 万次样式哈希）。
+   试过 write_only（15.5s）与共享 `_style` 内部对象（8.3s，但依赖 openpyxl 私有结构，
+   不采用）。真正的解法是改交付格式（CSV）或改成后台任务 + 下载链接，属产品决策。
 6. 未纳入基线覆盖：`/api/similarity/*`、`/api/hydrate/*`、`/api/query/run`、
    `/api/platform/*`（会打真实第三方 API）。
