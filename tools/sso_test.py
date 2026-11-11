@@ -97,8 +97,7 @@ check("session is Echo",
 same = url("testapp", "Echo", secret)
 first = anon.get(same, follow_redirects=False)
 replay = anon.get(same, follow_redirects=False)
-check("link is single-use", first.status_code == 302 and replay.status_code == 403
-      and "该链接已使用过" in page(replay))
+check("same link can be reopened", first.status_code == 302 and replay.status_code == 302)
 
 r = anon.get(url("testapp", "Echo", "0" * 64), follow_redirects=False)
 check("bad signature -> 403", r.status_code == 403 and "签名校验失败" in page(r))

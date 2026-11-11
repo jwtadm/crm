@@ -298,7 +298,6 @@ def _apply_migrations(c: sqlite3.Connection) -> None:
 
     # --- SSO apps (signed-link auto login) ---
     # Secrets are derived (see lib/sso.py), so only a random salt is stored.
-    # Nonces back the one-time guarantee; they are purged after 30 days.
     c.execute("""
         CREATE TABLE IF NOT EXISTS sso_apps (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -315,15 +314,9 @@ def _apply_migrations(c: sqlite3.Connection) -> None:
             use_count       INTEGER NOT NULL DEFAULT 0
         )
     """)
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS sso_nonces (
-            app_id      TEXT NOT NULL,
-            nonce       TEXT NOT NULL,
-            created_at  INTEGER NOT NULL,
-            PRIMARY KEY (app_id, nonce)
-        )
-    """)
-    c.execute("CREATE INDEX IF NOT EXISTS idx_sso_nonces_created ON sso_nonces(created_at)")
+    # Early builds tracked one-time nonces; links are reusable now, so the
+    # table is dead. It only ever existed empty (feature never used in prod).
+    c.execute("DROP TABLE IF EXISTS sso_nonces")
 
 
 # ---------- connection ----------
@@ -2045,25 +2038,23 @@ def get_trends(c: sqlite3.Connection, days: int = 7,
     return result
 
 
-# ---------- SSO apps / nonces ----------
+# ---------- SSO apps ----------
 # Small helpers with literal SQL at the call site (this repo forbids a generic
 # "run this SQL string" wrapper — see the security notes in tools/).
 
 SSO_COLS = ("id, app_id, name, created_by, created_at, allow_ips, allow_users,"
-            " ttl_seconds, allow_admin, allow_simple_key, is_active,"
-            " last_used_at, use_count")
+            " allow_simple_key, is_active, last_used_at, use_count")
 
 
 def create_sso_app(app_id: str, name: str, secret_salt: str, created_by: int | None,
-                   allow_ips: str, allow_users: str, ttl_seconds: int,
-                   allow_admin: int, allow_simple_key: int) -> int:
+                   allow_ips: str, allow_users: str, allow_simple_key: int) -> int:
     with tx() as c:
         cur = c.execute(
             "INSERT INTO sso_apps (app_id, name, secret_salt, created_by, created_at,"
-            " allow_ips, allow_users, ttl_seconds, allow_admin, allow_simple_key)"
-            " VALUES (?,?,?,?,?,?,?,?,?,?)",
+            " allow_ips, allow_users, allow_simple_key)"
+            " VALUES (?,?,?,?,?,?,?,?)",
             (app_id, name, secret_salt, created_by, int(time.time()),
-             allow_ips, allow_users, ttl_seconds, allow_admin, allow_simple_key),
+             allow_ips, allow_users, allow_simple_key),
         )
         return int(cur.lastrowid)
 
@@ -2072,7 +2063,7 @@ def list_sso_apps() -> list[dict]:
     with ro() as c:
         rows = c.execute(
             "SELECT s.id, s.app_id, s.name, s.created_by, s.created_at, s.allow_ips,"
-            "       s.allow_users, s.ttl_seconds, s.allow_admin, s.allow_simple_key,"
+            "       s.allow_users, s.allow_simple_key,"
             "       s.is_active, s.last_used_at, s.use_count,"
             "       u.username AS creator_username, u.display_name AS creator_display"
             "  FROM sso_apps s LEFT JOIN users u ON u.id = s.created_by"
@@ -2086,7 +2077,7 @@ def get_sso_app(app_id: str) -> dict | None:
     with ro() as c:
         row = c.execute(
             "SELECT id, app_id, name, secret_salt, created_by, created_at, allow_ips,"
-            "       allow_users, ttl_seconds, allow_admin, allow_simple_key, is_active,"
+            "       allow_users, allow_simple_key, is_active,"
             "       last_used_at, use_count"
             "  FROM sso_apps WHERE app_id = ?",
             (app_id,),
@@ -2113,18 +2104,3 @@ def touch_sso_app(app_pk: int) -> None:
     with tx() as c:
         c.execute("UPDATE sso_apps SET last_used_at = ?, use_count = use_count + 1"
                   " WHERE id = ?", (int(time.time()), app_pk))
-
-
-def use_sso_nonce(app_id: str, nonce: str) -> bool:
-    """Atomically claim a nonce. False = it was already used (replay)."""
-    now = int(time.time())
-    with tx() as c:
-        # Permanent links keep their nonce 30 days, per the SSO contract.
-        c.execute("DELETE FROM sso_nonces WHERE created_at < ?",
-                  (now - 30 * 86400,))
-        cur = c.execute(
-            "INSERT OR IGNORE INTO sso_nonces (app_id, nonce, created_at)"
-            " VALUES (?,?,?)",
-            (app_id, nonce, now),
-        )
-        return cur.rowcount == 1

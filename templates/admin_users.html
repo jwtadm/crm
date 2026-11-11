@@ -103,22 +103,44 @@
       <button class="btn btn-ghost btn-sm" onclick="closeNewSso()">✕</button>
     </div>
     <div class="modal-body">
-      <p class="hint">每个对接方单独建一个应用，出问题可单独禁用或重置，不影响其他系统。生成的登录链接**永久有效**（每条链接一次性使用）。</p>
-      <div class="add-grid">
-        <label>应用名称 *<input type="text" id="nsName" placeholder="如 企业微信工作台" autocomplete="off"></label>
-        <label>应用标识 app_id *<input type="text" id="nsAppId" placeholder="字母数字 _ -，2-32 位" autocomplete="off"></label>
-        <label style="grid-column:1/-1;">IP 白名单（可选，逗号分隔，支持 CIDR）
-          <input type="text" id="nsIps" placeholder="10.0.0.0/8, 203.0.113.7；留空=不限制" autocomplete="off">
-        </label>
-        <label style="grid-column:1/-1;">允许登录的账号（逗号分隔，留空 = 所有账号，含超管）
-          <input type="text" id="nsUsers" placeholder="alice, bob；留空=所有账号（含 admin）" autocomplete="off">
-        </label>
-        <label style="grid-column:1/-1;">
-          <span style="display:flex; align-items:center; gap:6px;">
-            <input type="checkbox" id="nsSimpleKey"> 允许简单 key 模式（无防重放，仅内网临时用）
+      <p class="modal-lead">
+        每个对接方单独建一个应用，各自独立密钥与访问范围；出问题可单独禁用或重置，互不影响。
+        生成的登录链接<b>永久有效、可重复打开</b>。
+      </p>
+
+      <div class="form-section">
+        <div class="form-section-title">基本信息</div>
+        <div class="add-grid">
+          <label>应用名称 *<input type="text" id="nsName" placeholder="如 企业微信工作台" autocomplete="off"></label>
+          <label>应用标识 app_id *<input type="text" id="nsAppId" placeholder="字母数字 _ -，2-32 位" autocomplete="off"></label>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <div class="form-section-title">访问控制</div>
+        <div class="add-grid">
+          <label style="grid-column:1/-1;">IP 白名单
+            <span class="label-hint">可选，逗号分隔，支持 CIDR；留空 = 不限制</span>
+            <input type="text" id="nsIps" placeholder="10.0.0.0/8, 203.0.113.7" autocomplete="off">
+          </label>
+          <label style="grid-column:1/-1;">允许登录的账号
+            <span class="label-hint">逗号分隔；留空 = 所有账号（含超管）</span>
+            <input type="text" id="nsUsers" placeholder="alice, bob" autocomplete="off">
+          </label>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <div class="form-section-title">登录方式</div>
+        <label class="check-row">
+          <input type="checkbox" id="nsSimpleKey">
+          <span class="check-copy">
+            <b>允许简单 key 模式</b>
+            <em>链接里直接带密钥（app_id + username + key），对接方不用实现签名</em>
           </span>
         </label>
       </div>
+
       <div id="nsError" class="error-msg" style="display:none;"></div>
     </div>
     <div class="modal-foot">

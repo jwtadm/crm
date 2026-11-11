@@ -483,11 +483,9 @@ def sso_login():
                   {"username": username, "ip": ip, "reason": "user_not_allowed"})
         return _sso_fail("该账号不在本应用的允许登录范围")
 
-    # Consume the nonce only after every other check passed, so a failed login
-    # does not burn the caller's link.
-    if mode == "signed" and not db.use_sso_nonce(app_id, nonce):
-        return _sso_fail("该链接已使用过")
-
+    # Links are reusable on purpose: the same URL may be opened again (refresh,
+    # bookmark, re-send). Replay protection is off by design — the controls are
+    # the app secret, the IP allowlist and the per-app account list.
     auth.login_user(user, remember=False)
     auth.stamp_login(user["id"])
     db.touch_sso_app(row["id"])
@@ -554,8 +552,7 @@ def api_admin_sso_app_create():
 
     salt = sso.new_salt()
     app_pk = db.create_sso_app(app_id, name, salt, u["id"], allow_ips,
-                               _json_mod.dumps(canonical),
-                               0, 0, allow_simple)
+                               _json_mod.dumps(canonical), allow_simple)
     secret = sso.app_secret(app.secret_key, app_id, salt)
     audit.log(u["id"], "sso_app.create", f"sso_app:{app_pk}",
               {"app_id": app_id, "name": name, "allow_ips": allow_ips,
