@@ -1760,6 +1760,21 @@ def api_db_update_person(person_id: int):
     return jsonify({"person": dict(person)})
 
 
+class _AbortTx(Exception):
+    """Raised inside `with db.tx()` to force a ROLLBACK while still returning
+    a normal HTTP response.
+
+    Returning a value from inside the `with` block exits it normally, which
+    COMMITs — so an error response built mid-transaction used to persist the
+    partial writes it was reporting as a failure.
+    """
+
+    def __init__(self, payload: dict, status: int = 409):
+        super().__init__(payload.get("error", "conflict"))
+        self.payload = payload
+        self.status = status
+
+
 @app.route("/api/db/import_handle", methods=["POST"])
 @auth.login_required
 def api_db_import_handle():
@@ -1802,33 +1817,40 @@ def api_db_import_handle():
     except Exception as e:
         return jsonify({"error": "platform_fetch_failed", "detail": str(e)[:300]}), 502
 
-    with db.tx() as c:
-        source = "manual:add-to-person" if target_pid is not None else "manual"
-        acct_id, returned_pid, created = db.upsert_account(
-            c, norm, source=source, prefer_person_id=target_pid
-        )
-
-        if target_pid is not None and returned_pid != target_pid:
-            other = db.get_person(c, returned_pid)
-            return jsonify({
-                "error": "handle_exists",
-                "existing_person_id": returned_pid,
-                "existing_full_name": (other["full_name"] if other else "") or "",
-                "existing_email": (other["email"] if other else "") or "",
-                "detail": f"@{handle} 已属于另一个客户",
-            }), 409
-
-        # Same-person placeholder cleanup: if this person already had a
-        # `import:<handle>` placeholder row for the same platform/username
-        # before we hydrated, drop it so we don't show two rows for one handle.
-        if target_pid is not None:
-            c.execute(
-                "DELETE FROM platform_accounts WHERE person_id=? AND platform=? "
-                "AND id != ? AND platform_user_id LIKE 'import:%' "
-                "AND LOWER(username)=LOWER(?)",
-                (target_pid, platform, acct_id, handle),
+    try:
+        with db.tx() as c:
+            source = "manual:add-to-person" if target_pid is not None else "manual"
+            acct_id, returned_pid, created = db.upsert_account(
+                c, norm, source=source, prefer_person_id=target_pid
             )
-        row = db.get_account(c, acct_id)
+
+            if target_pid is not None and returned_pid != target_pid:
+                other = db.get_person(c, returned_pid)
+                # Must roll back: upsert_account may already have inserted a
+                # people row, moved this account between people, or GC'd an
+                # orphaned person. A plain `return` here would commit all of
+                # that while telling the client nothing happened.
+                raise _AbortTx({
+                    "error": "handle_exists",
+                    "existing_person_id": returned_pid,
+                    "existing_full_name": (other["full_name"] if other else "") or "",
+                    "existing_email": (other["email"] if other else "") or "",
+                    "detail": f"@{handle} 已属于另一个客户",
+                })
+
+            # Same-person placeholder cleanup: if this person already had a
+            # `import:<handle>` placeholder row for the same platform/username
+            # before we hydrated, drop it so we don't show two rows for one handle.
+            if target_pid is not None:
+                c.execute(
+                    "DELETE FROM platform_accounts WHERE person_id=? AND platform=? "
+                    "AND id != ? AND platform_user_id LIKE 'import:%' "
+                    "AND LOWER(username)=LOWER(?)",
+                    (target_pid, platform, acct_id, handle),
+                )
+            row = db.get_account(c, acct_id)
+    except _AbortTx as abort:
+        return jsonify(abort.payload), abort.status
     try:
         ingest._embed_accounts([acct_id])
     except Exception:
