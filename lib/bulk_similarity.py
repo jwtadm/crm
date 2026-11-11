@@ -194,7 +194,7 @@ def save_job(job: dict, created_by: int, *, update_status: bool = True) -> None:
 
 
 def load_job(job_id: str) -> tuple[dict | None, int | None]:
-    with db.tx() as c:
+    with db.ro() as c:
         r = c.execute(
             "SELECT created_by, payload_json FROM similarity_jobs WHERE id=?",
             (job_id,),
@@ -245,7 +245,7 @@ def find_active_job() -> dict | None:
     pending?' query. 'interrupted' counts as active for the lock so a stale
     zombie doesn't deadlock the system — but the UI surfaces a Resume button
     that calls /resume, which CAS-flips status='interrupted' → 'running'."""
-    with db.tx() as c:
+    with db.ro() as c:
         r = c.execute(
             "SELECT id, created_by, payload_json, status FROM similarity_jobs "
             " WHERE status IN ('running','interrupted') "
@@ -390,9 +390,11 @@ def run_job(job: dict, created_by: int) -> None:
     consecutive_errors = 0
 
     # Re-fetch seed rows fresh (the snapshot is by ID; if a seed got deleted
-    # between job creation and execution, skip it).
+    # between job creation and execution, skip it). Light columns: only
+    # platform / platform_user_id / secondary_id / username are used, and the
+    # full row carries ~35KB of raw JSON + embedding.
     with db.tx() as c:
-        seed_rows = db.get_accounts_by_ids(c, seed_ids)
+        seed_rows = db.get_accounts_light_by_ids(c, seed_ids)
     seeds_by_id = {r["id"]: dict(r) for r in seed_rows}
 
     try:

@@ -51,7 +51,7 @@ def log_many(entries: list[tuple]) -> None:
 
 
 def recent(limit: int = 200) -> list[dict]:
-    with db.tx() as c:
+    with db.ro() as c:
         rows = c.execute(
             """SELECT a.id, a.actor_id, a.action, a.target, a.detail, a.created_at,
                       u.username AS actor_username

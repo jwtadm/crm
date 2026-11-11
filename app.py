@@ -572,6 +572,8 @@ def api_people_merge(target_id: int, source_id: int):
     if target_id == source_id:
         return jsonify({"error": "same_person",
                         "detail": "源和目标是同一个客户"}), 400
+    # Must stay a write transaction: merge_persons moves accounts/followups and
+    # deletes the source person, so all of it has to be atomic.
     with db.tx() as c:
         t = c.execute("SELECT id, full_name, email FROM people WHERE id=?", (target_id,)).fetchone()
         s = c.execute("SELECT id, full_name, email FROM people WHERE id=?", (source_id,)).fetchone()
@@ -782,7 +784,7 @@ def api_people_followups_list(person_id: int):
     u = auth.current_user()
     if not auth.user_owns_person(u, person_id):
         return jsonify({"error": "forbidden"}), 403
-    with db.tx() as c:
+    with db.ro() as c:
         rows = c.execute(
             """SELECT f.id, f.person_id, f.actor_id, f.content, f.created_at,
                       u.username AS actor_username, u.display_name AS actor_display_name
@@ -881,7 +883,7 @@ def api_people_reminders_for_person(person_id: int):
     u = auth.current_user()
     if not auth.user_owns_person(u, person_id):
         return jsonify({"error": "forbidden"}), 403
-    with db.tx() as c:
+    with db.ro() as c:
         rows = c.execute(
             "SELECT id, person_id, actor_id, remind_at, content, dismissed_at, created_at "
             "FROM reminders WHERE person_id=? ORDER BY remind_at DESC",
@@ -896,7 +898,7 @@ def api_reminders_due():
     """Return all due-and-not-dismissed reminders the current user owns."""
     u = auth.current_user()
     now = int(time.time())
-    with db.tx() as c:
+    with db.ro() as c:
         rows = c.execute(
             """SELECT r.id, r.person_id, r.actor_id, r.remind_at, r.content,
                       r.created_at, p.full_name AS person_name, p.email AS person_email
@@ -1044,10 +1046,10 @@ def _load_email_job(job_id: str) -> tuple[dict | None, int | None]:
     """Return (job_dict, created_by) or (None, None) if missing."""
     if job_id in EMAIL_JOBS:
         # We don't reliably know created_by from memory — reach into DB to be safe.
-        with db.tx() as c:
+        with db.ro() as c:
             r = c.execute("SELECT created_by FROM email_jobs WHERE id=?", (job_id,)).fetchone()
         return EMAIL_JOBS[job_id], (r["created_by"] if r else None)
-    with db.tx() as c:
+    with db.ro() as c:
         r = c.execute("SELECT created_by, payload_json FROM email_jobs WHERE id=?", (job_id,)).fetchone()
     if not r:
         return None, None
@@ -1492,7 +1494,7 @@ def api_settings_test():
 
 @cache.cached(timeout=30, key_prefix='db_stats')
 def _stats() -> dict:
-    with db.tx() as c:
+    with db.ro() as c:
         return db.count_accounts(c)
 
 
@@ -2039,8 +2041,8 @@ def api_similarity_run():
     if not seed_ids:
         return jsonify({"error": "no seeds selected"}), 400
 
-    with db.tx() as c:
-        seeds = db.get_accounts_by_ids(c, seed_ids)
+    with db.ro() as c:
+        seeds = db.get_accounts_light_by_ids(c, seed_ids)
     if not seeds:
         return jsonify({"error": "seed accounts not found in DB"}), 404
 
@@ -2532,7 +2534,7 @@ def api_query_run():
 def api_db_export():
     payload = request.json or {}
     ids = payload.get("account_ids")
-    with db.tx() as c:
+    with db.ro() as c:
         rows = db.get_accounts_by_ids(c, ids) if ids else db.list_accounts(c, limit=100000)
     rows = [db.row_to_dict(r) for r in rows]
 

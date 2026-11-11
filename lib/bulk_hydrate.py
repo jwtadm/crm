@@ -165,7 +165,7 @@ def save_job(job: dict, created_by: int, *, update_status: bool = True) -> None:
 
 
 def load_job(job_id: str) -> tuple[dict | None, int | None]:
-    with db.tx() as c:
+    with db.ro() as c:
         r = c.execute(
             "SELECT created_by, payload_json FROM hydrate_jobs WHERE id=?",
             (job_id,),
@@ -207,7 +207,7 @@ def try_create_locked(job: dict, created_by: int) -> tuple[bool, dict | None]:
 
 
 def find_active_job() -> dict | None:
-    with db.tx() as c:
+    with db.ro() as c:
         r = c.execute(
             "SELECT id, created_by, payload_json, status FROM hydrate_jobs "
             " WHERE status IN ('running','interrupted') "
@@ -304,8 +304,11 @@ def run_job(job: dict, created_by: int) -> None:
 
     # Re-fetch rows fresh from DB. We need username + platform; an account
     # deleted between job creation and execution is skipped with an error.
+    # Light columns only: the previous SELECT * pulled the raw JSON and the
+    # embedding of every account in the job (~35KB each, ~1GB for 30k rows)
+    # to read two fields.
     with db.tx() as c:
-        rows = db.get_accounts_by_ids(c, account_ids)
+        rows = db.get_accounts_light_by_ids(c, account_ids)
     by_id = {r["id"]: dict(r) for r in rows}
 
     def _worker(item: tuple[int, int, dict | None]) -> dict:

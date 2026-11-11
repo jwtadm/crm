@@ -60,7 +60,7 @@ _REJ_CACHE: dict = {"signature": None, "vectors": [], "matrix": None}
 
 def _rejection_pool_signature() -> tuple[int, int]:
     """Cheap cache key: (count, max_rejected_at). Changes when pool is mutated."""
-    with db.tx() as c:
+    with db.ro() as c:
         row = c.execute(
             "SELECT COUNT(*) AS n, COALESCE(MAX(rejected_at),0) AS m "
             "FROM platform_accounts WHERE is_rejected=1 AND bio_embedding IS NOT NULL"
@@ -68,7 +68,7 @@ def _rejection_pool_signature() -> tuple[int, int]:
     return (row["n"], row["m"])
 
 
-def _load_rejection_pool() -> list[tuple[int, str, list[float]]]:
+def _load_rejection_pool() -> list[tuple[int, str, list[float] | None]]:
     sig = _rejection_pool_signature()
     with _REJ_LOCK:
         if _REJ_CACHE["signature"] == sig:
@@ -78,13 +78,27 @@ def _load_rejection_pool() -> list[tuple[int, str, list[float]]]:
                 "SELECT id, username, bio_embedding FROM platform_accounts "
                 "WHERE is_rejected=1 AND bio_embedding IS NOT NULL"
             ).fetchall()
-        vecs = [(r["id"], r["username"] or "", db.unpack_embedding(r["bio_embedding"])) for r in rows]
+
+        blobs = [r["bio_embedding"] for r in rows]
+        matrix = ai.matrix_from_packed(blobs)
+        if matrix is not None:
+            # Fast path available. Do NOT unpack the vectors into Python float
+            # lists: 5063 x 4096 floats is ~633MB of RSS (each float is its own
+            # object) vs 79MB for the float32 matrix, and the matmul never
+            # touches the lists. Only id + username are needed for reporting.
+            vecs: list[tuple[int, str, list[float] | None]] = [
+                (r["id"], r["username"] or "", None) for r in rows
+            ]
+        else:
+            # No numpy (or ragged blobs): the per-pair cosine fallback needs the
+            # unpacked vectors, so pay the memory.
+            vecs = [
+                (r["id"], r["username"] or "", db.unpack_embedding(b))
+                for r, b in zip(rows, blobs)
+            ]
         _REJ_CACHE["signature"] = sig
         _REJ_CACHE["vectors"] = vecs
-        # Pre-normalise once per pool build so each batch is a single matmul.
-        # Built straight from the blobs (the list round-trip above is only kept
-        # for the no-numpy fallback). None when numpy is missing.
-        _REJ_CACHE["matrix"] = ai.matrix_from_packed([r["bio_embedding"] for r in rows])
+        _REJ_CACHE["matrix"] = matrix
         return vecs
 
 
@@ -128,6 +142,13 @@ def _filter_against_rejected(candidate_norms: list[dict]) -> tuple[list[dict], l
             res = ai.best_match([vec_by_idx[i] for i in q_idx], matrix)
             if res is not None:
                 fast = dict(zip(q_idx, zip(res[0], res[1])))
+
+    if fast is None and pool and pool[0][2] is None:
+        # The pool was cached in matrix-only form (see _load_rejection_pool) but
+        # the fast path could not run — e.g. the candidate embeddings no longer
+        # match the pool's dimension. We cannot score anything, so keep
+        # everything: a similarity filter must never silently drop creators.
+        return candidate_norms, []
 
     for i, n in enumerate(candidate_norms):
         v = vec_by_idx.get(i)
@@ -400,13 +421,16 @@ def _embed_accounts(account_ids: list[int]) -> None:
     if not account_ids:
         return
     with db.tx() as c:
-        rows = db.get_accounts_by_ids(c, account_ids)
+        # Text columns + an embedding-exists flag. embed_missing() can hand this
+        # function 45k ids; SELECT * here meant ~1GB of raw JSON + blobs just
+        # to rebuild the text and test whether an embedding was present.
+        rows = db.get_accounts_for_embedding(c, account_ids)
     pending = []
     for r in rows:
         text = _embed_text_for(dict(r))
         if not text:
             continue
-        if r["embedding_text"] == text and r["bio_embedding"]:
+        if r["embedding_text"] == text and r["has_embedding"]:
             continue
         pending.append((r["id"], text))
     if not pending:

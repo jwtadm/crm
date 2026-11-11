@@ -122,7 +122,7 @@ def _load() -> dict[str, str]:
         cached = _cache["values"]
         if cached and (now - _cache["at"]) < _CACHE_TTL:
             return cached
-    with db.tx() as c:
+    with db.ro() as c:
         rows = c.execute("SELECT key, value FROM settings").fetchall()
     values = {r["key"]: r["value"] for r in rows}
     with _cache_lock:

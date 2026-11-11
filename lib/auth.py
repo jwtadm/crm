@@ -37,25 +37,25 @@ def verify_pw(plain: str, hashed: str) -> bool:
 # ---------- user CRUD ----------
 
 def get_user(user_id: int) -> dict | None:
-    with db.tx() as c:
+    with db.ro() as c:
         row = c.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
     return dict(row) if row else None
 
 
 def get_user_by_username(username: str) -> dict | None:
-    with db.tx() as c:
+    with db.ro() as c:
         row = c.execute("SELECT * FROM users WHERE LOWER(username)=LOWER(?)", (username,)).fetchone()
     return dict(row) if row else None
 
 
 def get_user_by_email(email: str) -> dict | None:
-    with db.tx() as c:
+    with db.ro() as c:
         row = c.execute("SELECT * FROM users WHERE LOWER(email)=LOWER(?)", (email,)).fetchone()
     return dict(row) if row else None
 
 
 def list_users() -> list[dict]:
-    with db.tx() as c:
+    with db.ro() as c:
         rows = c.execute(
             """SELECT u.*,
                   (SELECT COUNT(*) FROM people p WHERE p.assigned_user_id = u.id) AS assigned_count
@@ -72,7 +72,7 @@ def list_users() -> list[dict]:
 
 def list_active_staff_and_admins() -> list[dict]:
     """For the admin's "assign to" dropdown."""
-    with db.tx() as c:
+    with db.ro() as c:
         rows = c.execute(
             "SELECT id, username, display_name, role FROM users WHERE is_active=1 ORDER BY role DESC, username ASC"
         ).fetchall()
@@ -132,7 +132,7 @@ def delete_user(user_id: int) -> None:
 
 
 def count_active_admins(exclude_id: int | None = None) -> int:
-    with db.tx() as c:
+    with db.ro() as c:
         if exclude_id is not None:
             row = c.execute(
                 "SELECT COUNT(*) AS n FROM users WHERE role='admin' AND is_active=1 AND id != ?",
@@ -239,10 +239,10 @@ def user_owns_person(user: dict, person_id: int) -> bool:
         return False
     if user["role"] == "admin":
         # admin "owns" any existing row, but we still want to return True only if it exists
-        with db.tx() as c:
+        with db.ro() as c:
             r = c.execute("SELECT 1 FROM people WHERE id=?", (person_id,)).fetchone()
         return r is not None
-    with db.tx() as c:
+    with db.ro() as c:
         r = c.execute(
             "SELECT 1 FROM people WHERE id=? AND assigned_user_id=?", (person_id, user["id"])
         ).fetchone()
@@ -254,7 +254,7 @@ def filter_owned_person_ids(user: dict, ids: list[int]) -> tuple[list[int], list
     if not ids:
         return [], []
     if user and user["role"] == "admin":
-        with db.tx() as c:
+        with db.ro() as c:
             qmarks = ",".join("?" * len(ids))
             rows = c.execute(
                 f"SELECT id FROM people WHERE id IN ({qmarks})", ids
@@ -263,7 +263,7 @@ def filter_owned_person_ids(user: dict, ids: list[int]) -> tuple[list[int], list
         owned = [i for i in ids if i in existing]
         not_owned = [i for i in ids if i not in existing]
         return owned, not_owned
-    with db.tx() as c:
+    with db.ro() as c:
         qmarks = ",".join("?" * len(ids))
         rows = c.execute(
             f"SELECT id FROM people WHERE id IN ({qmarks}) AND assigned_user_id=?",
@@ -279,7 +279,7 @@ def user_owns_account(user: dict, account_id: int) -> bool:
     """Account belongs to a person; check ownership at the person level."""
     if not user:
         return False
-    with db.tx() as c:
+    with db.ro() as c:
         r = c.execute(
             "SELECT person_id FROM platform_accounts WHERE id=?", (account_id,)
         ).fetchone()

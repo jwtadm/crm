@@ -350,13 +350,28 @@ def init_db() -> None:
 
 @contextmanager
 def tx():
-    """Write transaction context. Uses deferred BEGIN so read-only callers
-    (like get_user) don't grab the write lock. Autocommit mode (isolation_level=None)
-    means we must BEGIN/COMMIT explicitly."""
+    """Write transaction context.
+
+    Uses BEGIN IMMEDIATE, not deferred BEGIN. With deferred BEGIN a transaction
+    that reads first and writes second has to upgrade its lock, and if another
+    connection committed in between SQLite raises SQLITE_BUSY_SNAPSHOT —
+    which **busy_timeout does not retry**. Measured with 8 threads doing
+    read-then-write: deferred BEGIN lost 299 of 320 attempts to
+    "database is locked" and only 341 of 640 increments landed; BEGIN
+    IMMEDIATE had 0 errors and all 640 landed (510ms vs 37ms — it serialises,
+    which is exactly what a write transaction should do).
+
+    Cost: this takes the write lock up front, so a *read-only* caller using
+    tx() now blocks writers. Read paths should use ro() instead — that is also
+    why ro() exists (pooled, no transaction, warm page cache).
+
+    Autocommit mode (isolation_level=None) means we must BEGIN/COMMIT
+    explicitly.
+    """
     c = _conn()
     begun = False
     try:
-        c.execute("BEGIN")
+        c.execute("BEGIN IMMEDIATE")
         begun = True
         yield c
         c.execute("COMMIT")
@@ -699,11 +714,68 @@ def get_account(c: sqlite3.Connection, account_id: int) -> sqlite3.Row | None:
 
 
 def get_accounts_by_ids(c: sqlite3.Connection, ids: Iterable[int]) -> list[sqlite3.Row]:
-    ids = list(ids)
-    if not ids:
+    """Full rows (SELECT *) for the given ids.
+
+    Chunked: a snapshot of >32,766 ids would otherwise exceed
+    SQLITE_MAX_VARIABLE_NUMBER. Prefer the light variants below unless the
+    caller really needs raw/bio_embedding — SELECT * drags ~35KB per row.
+    """
+    id_list = list(ids)
+    if not id_list:
         return []
-    qmarks = ",".join("?" * len(ids))
-    return c.execute(f"SELECT * FROM platform_accounts WHERE id IN ({qmarks})", ids).fetchall()
+    out: list[sqlite3.Row] = []
+    for start in range(0, len(id_list), _IN_CHUNK):
+        chunk = id_list[start:start + _IN_CHUNK]
+        qmarks = ",".join("?" * len(chunk))
+        out.extend(c.execute(
+            f"SELECT * FROM platform_accounts WHERE id IN ({qmarks})", chunk
+        ).fetchall())
+    return out
+
+
+def get_accounts_light_by_ids(c: sqlite3.Connection, ids: Iterable[int]) -> list[sqlite3.Row]:
+    """Identity columns only — for the bulk jobs that fetch a whole snapshot.
+
+    bulk_similarity / bulk_hydrate / /api/similarity/run re-fetch every account
+    of a job up front but only use platform, platform_user_id, secondary_id and
+    username. With SELECT * that snapshot cost ~35KB per row (~1GB for a 30k
+    job); these five columns are ~200 bytes.
+    """
+    id_list = list(ids)
+    if not id_list:
+        return []
+    out: list[sqlite3.Row] = []
+    for start in range(0, len(id_list), _IN_CHUNK):
+        chunk = id_list[start:start + _IN_CHUNK]
+        qmarks = ",".join("?" * len(chunk))
+        out.extend(c.execute(
+            "SELECT id, platform, platform_user_id, secondary_id, username "
+            f"  FROM platform_accounts WHERE id IN ({qmarks})", chunk
+        ).fetchall())
+    return out
+
+
+def get_accounts_for_embedding(c: sqlite3.Connection, ids: Iterable[int]) -> list[sqlite3.Row]:
+    """Text columns + whether an embedding already exists.
+
+    _embed_accounts needs full_name/biography/category (to rebuild the text),
+    embedding_text (to tell whether it is stale) and only the *existence* of
+    bio_embedding. Selecting the 16KB blob to test truthiness cost ~1GB when
+    embed_missing passed 45k ids through here.
+    """
+    id_list = list(ids)
+    if not id_list:
+        return []
+    out: list[sqlite3.Row] = []
+    for start in range(0, len(id_list), _IN_CHUNK):
+        chunk = id_list[start:start + _IN_CHUNK]
+        qmarks = ",".join("?" * len(chunk))
+        out.extend(c.execute(
+            "SELECT id, full_name, biography, category, embedding_text, "
+            "       COALESCE(length(bio_embedding), 0) > 0 AS has_embedding "
+            f"  FROM platform_accounts WHERE id IN ({qmarks})", chunk
+        ).fetchall())
+    return out
 
 
 def has_account(c: sqlite3.Connection, platform: str, platform_user_id: str) -> bool:
