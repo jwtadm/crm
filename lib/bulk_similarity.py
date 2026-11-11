@@ -77,7 +77,7 @@ def list_eligible_seeds(
         sql += " AND p.status IN (" + ",".join(["?"] * len(statuses)) + ") "
         args.extend(statuses)
     sql += " ORDER BY pa.follower_count DESC NULLS LAST, pa.id ASC"
-    with db.tx() as c:
+    with db.ro() as c:
         rows = c.execute(sql, args).fetchall()
     return [dict(r) for r in rows]
 

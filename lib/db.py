@@ -778,6 +778,29 @@ def get_accounts_for_embedding(c: sqlite3.Connection, ids: Iterable[int]) -> lis
     return out
 
 
+def get_account_light(c: sqlite3.Connection, account_id: int) -> sqlite3.Row | None:
+    """One account without the raw JSON / embedding columns.
+
+    ingest.run() builds its report one account at a time inside a single write
+    transaction; SELECT * there read ~35KB per row and row_to_dict then
+    json-parsed the ~19KB raw payload — 96% of the resulting response was a
+    field the UI never reads (renderAccount in _base.html uses follower counts,
+    bio, email, username…). Use get_account() when raw is actually needed.
+    """
+    return c.execute(
+        f"SELECT {_ACCOUNT_LIGHT_COLS} FROM platform_accounts WHERE id=?", (account_id,)
+    ).fetchone()
+
+
+def list_accounts_for_person_light(c: sqlite3.Connection, person_id: int) -> list[sqlite3.Row]:
+    """Same rows/order as list_accounts_for_person(), without raw/embedding."""
+    return c.execute(
+        f"SELECT {_ACCOUNT_LIGHT_COLS} FROM platform_accounts "
+        "WHERE person_id=? ORDER BY platform",
+        (person_id,),
+    ).fetchall()
+
+
 def has_account(c: sqlite3.Connection, platform: str, platform_user_id: str) -> bool:
     return c.execute(
         "SELECT 1 FROM platform_accounts WHERE platform=? AND platform_user_id=?",

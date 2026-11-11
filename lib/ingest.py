@@ -344,7 +344,7 @@ def run(candidates: list[tuple[dict, str]], target_count: int, hydrate: bool = T
             already_on_platform = False
             if existing_person_id:
                 # Does that person already own an account on this same platform?
-                rows = db.list_accounts_for_person(c, existing_person_id)
+                rows = db.list_accounts_for_person_light(c, existing_person_id)
                 already_on_platform = any(r["platform"] == norm["platform"] for r in rows)
 
             if existing_person_id and already_on_platform:
@@ -362,7 +362,7 @@ def run(candidates: list[tuple[dict, str]], target_count: int, hydrate: bool = T
                 })
                 continue
 
-            row = db.get_account(c, acct_id)
+            row = db.get_account_light(c, acct_id)
             account_dict = db.row_to_dict(row)
             fresh_account_ids.append(acct_id)
 
@@ -372,7 +372,7 @@ def run(candidates: list[tuple[dict, str]], target_count: int, hydrate: bool = T
                 #   b. that person already had handles on other platforms → 真正的跨平台发现
                 others = [
                     db.row_to_dict(r)
-                    for r in db.list_accounts_for_person(c, person_id)
+                    for r in db.list_accounts_for_person_light(c, person_id)
                     if r["id"] != acct_id
                 ]
                 person_row = db.get_person(c, person_id)

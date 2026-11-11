@@ -2705,16 +2705,24 @@ def api_admin_user_delete(user_id: int):
     target = auth.get_user(user_id)
     if not target:
         return jsonify({"error": "not_found"}), 404
-    with db.tx() as c:
-        n_assigned = c.execute(
-            "SELECT COUNT(*) AS n FROM people WHERE assigned_user_id=?", (user_id,)
-        ).fetchone()["n"]
-    if n_assigned > 0 or target["last_login_at"]:
-        return jsonify({"error": "user_in_use",
-                        "detail": "请先转派客户并停用"}), 400
     if target["role"] == "admin" and auth.count_active_admins(exclude_id=user_id) == 0:
         return jsonify({"error": "last_admin"}), 400
-    auth.delete_user(user_id)
+    # Anything that ever referenced this user blocks the delete (those FKs have
+    # no ON DELETE clause). Checking up front turns what used to surface as
+    # "FOREIGN KEY constraint failed" -> HTTP 500 into a message the admin can
+    # act on. Note it also covers last_login_at: the old guard treated a login
+    # as "in use", but a user with audit rows always has one too.
+    blockers = auth.user_history_blockers(user_id)
+    if blockers:
+        return jsonify({
+            "error": "user_in_use",
+            "detail": "该账号有历史记录，无法物理删除；请改为停用（历史记录会保留）",
+            "blockers": blockers,
+        }), 400
+    try:
+        auth.delete_user(user_id)
+    except Exception as e:          # backstop if a reference ever slips through
+        return jsonify({"error": "user_in_use", "detail": str(e)[:200]}), 400
     audit.log(auth.current_user()["id"], "user.delete", f"user:{user_id}")
     return jsonify({"ok": True})
 

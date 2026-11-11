@@ -131,6 +131,50 @@ def delete_user(user_id: int) -> None:
         c.execute("DELETE FROM users WHERE id=?", (user_id,))
 
 
+def user_history_blockers(user_id: int) -> dict[str, int]:
+    """Count rows that reference this user through a foreign key.
+
+    users cannot be hard-deleted while anything points at it (the FKs have no
+    ON DELETE clause). The old guard only looked at people.assigned_user_id and
+    last_login_at, so a delete could reach SQLite and come back as
+    "FOREIGN KEY constraint failed" -> HTTP 500. Counting here lets the caller
+    refuse with an accurate message instead.
+
+    One statement per table, each literal at its own call site (this repo does
+    not pass SQL text through a variable).
+    """
+    out: dict[str, int] = {}
+    with db.ro() as c:
+        n = c.execute("SELECT COUNT(*) FROM people WHERE assigned_user_id=?", (user_id,)).fetchone()[0]
+        if n:
+            out["assigned_people"] = n
+        n = c.execute("SELECT COUNT(*) FROM audit_log WHERE actor_id=?", (user_id,)).fetchone()[0]
+        if n:
+            out["audit_log"] = n
+        n = c.execute("SELECT COUNT(*) FROM followup_logs WHERE actor_id=?", (user_id,)).fetchone()[0]
+        if n:
+            out["followups"] = n
+        n = c.execute("SELECT COUNT(*) FROM reminders WHERE actor_id=?", (user_id,)).fetchone()[0]
+        if n:
+            out["reminders"] = n
+        n = c.execute("SELECT COUNT(*) FROM status_events WHERE actor_id=?", (user_id,)).fetchone()[0]
+        if n:
+            out["status_events"] = n
+        n = c.execute("SELECT COUNT(*) FROM platform_accounts WHERE rejected_by=?", (user_id,)).fetchone()[0]
+        if n:
+            out["rejected_accounts"] = n
+        n = c.execute("SELECT COUNT(*) FROM email_jobs WHERE created_by=?", (user_id,)).fetchone()[0]
+        if n:
+            out["email_jobs"] = n
+        n = c.execute("SELECT COUNT(*) FROM similarity_jobs WHERE created_by=?", (user_id,)).fetchone()[0]
+        if n:
+            out["similarity_jobs"] = n
+        n = c.execute("SELECT COUNT(*) FROM hydrate_jobs WHERE created_by=?", (user_id,)).fetchone()[0]
+        if n:
+            out["hydrate_jobs"] = n
+    return out
+
+
 def count_active_admins(exclude_id: int | None = None) -> int:
     with db.ro() as c:
         if exclude_id is not None:
