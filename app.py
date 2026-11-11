@@ -5,6 +5,7 @@ Every UI action has a 1:1 backend API. See `tools/api_test.py` for the contract.
 import io
 import json as _json_mod
 import os
+import hashlib
 import secrets as _secrets
 import tempfile
 import threading
@@ -40,6 +41,53 @@ app.permanent_session_lifetime = timedelta(days=30)  # honored only when remembe
 
 # Enable gzip compression for all responses
 Compress(app)
+
+# ---------- Static asset caching ----------
+# style.css is the only static file, and every page load re-downloaded it.
+# Its URL now carries a content hash (?v=…), so the browser may keep it for a
+# year and a deploy that changes the file gets a new URL automatically.
+# HTML and API responses must never be cached: pages are rendered per user and
+# the lists are live data.
+def _static_version() -> str:
+    # Cache-busting token only — not a security hash.
+    digest = hashlib.sha256()
+    try:
+        with open(os.path.join(app.static_folder, "style.css"), "rb") as f:
+            digest.update(f.read())
+    except OSError:
+        return "0"
+    return digest.hexdigest()[:12]
+
+
+STATIC_VERSION = _static_version()
+
+
+@app.context_processor
+def _inject_static_version():
+    return {"static_v": STATIC_VERSION}
+
+
+@app.after_request
+def _cache_headers(resp):
+    path = request.path
+    if path.startswith("/static/"):
+        if app.debug:
+            # The dev server does not restart when only CSS changes, so the
+            # hash in the URL would go stale — always revalidate locally.
+            resp.headers["Cache-Control"] = "no-cache"
+        elif request.args.get("v") == STATIC_VERSION:
+            resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        else:
+            # Un-versioned URL (old page / bookmark): revalidate so a deploy
+            # can never leave stale CSS pinned.
+            resp.headers["Cache-Control"] = "no-cache"
+    elif path.startswith("/api/"):
+        resp.headers["Cache-Control"] = "no-store"
+    elif resp.mimetype == "text/html":
+        # no-cache rather than no-store: the page may still go into bfcache.
+        resp.headers["Cache-Control"] = "no-cache"
+    return resp
+
 
 # Simple in-memory cache for expensive operations
 app.config['CACHE_TYPE'] = 'SimpleCache'
