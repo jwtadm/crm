@@ -1124,18 +1124,20 @@ def get_daily_overview(c: sqlite3.Connection, start_ts: int, end_ts: int,
 
     # Status changes from status_events — COUNT(DISTINCT person_id) so the same
     # person entering a stage twice in the range counts once (RC-1/RC-6).
-    # Include all 5 funnel statuses so KPI, employee detail, and pipeline share
-    # the same source of truth.
-    status_changes = {}
-    for status in ["已联系", "已回复", "已成交", "不适合"]:
-        row = c.execute(
-            f"""SELECT COUNT(DISTINCT se.person_id) AS n FROM status_events se
-                LEFT JOIN people p ON p.id = se.person_id
-                WHERE se.new_status = ? AND se.created_at >= ? AND se.created_at < ?
-                {user_filter}""",
-            [status, start_ts, end_ts] + user_param,
-        ).fetchone()
-        status_changes[status] = row["n"] if row else 0
+    # One GROUP BY query for all four funnel statuses instead of a 4-iteration
+    # Python loop; missing statuses still report 0 below.
+    status_changes = {s: 0 for s in ["已联系", "已回复", "已成交", "不适合"]}
+    for row in c.execute(
+        f"""SELECT se.new_status AS s, COUNT(DISTINCT se.person_id) AS n
+              FROM status_events se
+              LEFT JOIN people p ON p.id = se.person_id
+             WHERE se.new_status IN ('已联系', '已回复', '已成交', '不适合')
+               AND se.created_at >= ? AND se.created_at < ?
+               {user_filter}
+             GROUP BY se.new_status""",
+        [start_ts, end_ts] + user_param,
+    ).fetchall():
+        status_changes[row["s"]] = row["n"]
 
     # Per-user breakdown — use GROUP BY queries instead of per-user loops (N+1 fix)
     per_user = []
