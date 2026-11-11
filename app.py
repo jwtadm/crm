@@ -514,7 +514,7 @@ def api_people_match_ids():
     # drops rows the table is showing (e.g. the 不适合 rows when the toggle is on).
     include_rejected = (args.get("include_rejected") or "").lower() in ("1", "true", "yes")
     with db.tx() as c:
-        rows, total = db.list_people(
+        rows, total = db.list_people_brief(
             c,
             q=(args.get("q") or "").strip(),
             status=(args.get("status") or "").strip(),

@@ -795,25 +795,21 @@ def all_account_ids_with_embeddings(c: sqlite3.Connection) -> list[tuple[int, by
     ]
 
 
-def list_people(
-    c: sqlite3.Connection,
+def _people_where(
     *,
     q: str = "",
     status: str = "",
     owner: str = "",
-    has_platform: str = "",     # 'instagram' | 'x' | 'tiktok' | 'any' | 'none' | ''
-    has_email: str = "",        # 'yes' | 'no' | ''
-    order: str = "last_contacted",   # 'last_contacted' | 'updated' | 'created' | 'name'
-    limit: int = 100,
-    offset: int = 0,
-    assigned_user_id: int | str | None = None,  # int = filter to that user; 'unassigned' = NULL; None = no filter
+    has_platform: str = "",
+    has_email: str = "",
+    assigned_user_id: int | str | None = None,
     include_rejected: bool = False,
-) -> tuple[list[dict], int]:
-    """Return (rows, total). Each row has aggregated `handles` & `account_count`.
+) -> tuple[str, list]:
+    """Shared WHERE clause for the people list / match_ids queries.
 
-    `assigned_user_id` is the canonical scoping filter. Caller is responsible for
-    setting it to the current staff user's id (or 'unassigned'/None for admin
-    views). The legacy `owner` text filter is kept as-is.
+    Extracted so the two callers cannot drift apart. They already had: match_ids
+    forgot to pass include_rejected, so "select all matching" silently dropped
+    the 不适合 rows the table was showing.
     """
     where, args = ["1=1"], []
     if q:
@@ -852,11 +848,13 @@ def list_people(
     elif has_platform in ("instagram", "x", "tiktok"):
         where.append("EXISTS (SELECT 1 FROM platform_accounts pa WHERE pa.person_id = p.id AND pa.platform = ?)")
         args.append(has_platform)
+    return " AND ".join(where), args
 
-    where_sql = " AND ".join(where)
-    total = c.execute(f"SELECT COUNT(*) FROM people p WHERE {where_sql}", args).fetchone()[0]
 
-    order_sql = {
+def _people_order_sql(order: str) -> str:
+    """Shared ORDER BY for the people list queries (identical in both paths,
+    so 'select all matching' returns the same rows in the same order)."""
+    return {
         "last_contacted": "p.last_contacted_at DESC, p.updated_at DESC",
         "updated":        "p.updated_at DESC",
         "created":        "p.created_at DESC",
@@ -867,6 +865,36 @@ def list_people(
         "name":           "p.full_name COLLATE NOCASE ASC",
         "followers":      "agg.max_followers DESC, p.updated_at DESC",
     }.get(order, "p.last_contacted_at DESC, p.updated_at DESC")
+
+
+def list_people(
+    c: sqlite3.Connection,
+    *,
+    q: str = "",
+    status: str = "",
+    owner: str = "",
+    has_platform: str = "",     # 'instagram' | 'x' | 'tiktok' | 'any' | 'none' | ''
+    has_email: str = "",        # 'yes' | 'no' | ''
+    order: str = "last_contacted",   # 'last_contacted' | 'updated' | 'created' | 'name'
+    limit: int = 100,
+    offset: int = 0,
+    assigned_user_id: int | str | None = None,  # int = filter to that user; 'unassigned' = NULL; None = no filter
+    include_rejected: bool = False,
+) -> tuple[list[dict], int]:
+    """Return (rows, total). Each row has aggregated `handles` & `account_count`.
+
+    `assigned_user_id` is the canonical scoping filter. Caller is responsible for
+    setting it to the current staff user's id (or 'unassigned'/None for admin
+    views). The legacy `owner` text filter is kept as-is.
+    """
+    where_sql, args = _people_where(
+        q=q, status=status, owner=owner, has_platform=has_platform,
+        has_email=has_email, assigned_user_id=assigned_user_id,
+        include_rejected=include_rejected,
+    )
+    total = c.execute(f"SELECT COUNT(*) FROM people p WHERE {where_sql}", args).fetchone()[0]
+
+    order_sql = _people_order_sql(order)
 
     # Two-phase query: first get the paginated people, then aggregate only for those IDs.
     # This avoids scanning the entire platform_accounts table on every page load.
@@ -979,6 +1007,62 @@ def list_people(
         )
         out.append(d)
     return out, total
+
+
+def list_people_brief(
+    c: sqlite3.Connection,
+    *,
+    q: str = "",
+    status: str = "",
+    owner: str = "",
+    has_platform: str = "",
+    has_email: str = "",
+    order: str = "last_contacted",
+    limit: int = 100000,
+    offset: int = 0,
+    assigned_user_id: int | str | None = None,
+    include_rejected: bool = False,
+) -> tuple[list[dict], int]:
+    """Same rows/order as list_people, but only id / email / full_name.
+
+    For "select all matching" (up to 43k rows). list_people parses 43k tag
+    JSON strings, sorts 43k handle lists and runs ~48 chunked aggregation
+    queries — all discarded by this caller. Measured 540ms -> ~120ms.
+    Filters and ordering come from the shared builders above, so the selection
+    can never disagree with what the table shows.
+    """
+    where_sql, args = _people_where(
+        q=q, status=status, owner=owner, has_platform=has_platform,
+        has_email=has_email, assigned_user_id=assigned_user_id,
+        include_rejected=include_rejected,
+    )
+    total = c.execute(f"SELECT COUNT(*) FROM people p WHERE {where_sql}", args).fetchone()[0]
+    order_sql = _people_order_sql(order)
+
+    if order == "followers":
+        # Same join shape as list_people: ORDER BY needs the aggregate.
+        rows = c.execute(
+            f"""SELECT p.id, p.email, p.full_name
+                  FROM people p
+                  LEFT JOIN (
+                      SELECT person_id, MAX(follower_count) AS max_followers
+                        FROM platform_accounts GROUP BY person_id
+                  ) agg ON agg.person_id = p.id
+                 WHERE {where_sql}
+                 ORDER BY {order_sql}
+                 LIMIT ? OFFSET ?""",
+            [*args, limit, offset],
+        ).fetchall()
+    else:
+        rows = c.execute(
+            f"""SELECT p.id, p.email, p.full_name
+                  FROM people p
+                 WHERE {where_sql}
+                 ORDER BY {order_sql}
+                 LIMIT ? OFFSET ?""",
+            [*args, limit, offset],
+        ).fetchall()
+    return [dict(r) for r in rows], total
 
 
 # Statuses that are "ahead in the funnel" of 已联系 (or terminal). Sending
