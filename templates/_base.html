@@ -153,9 +153,15 @@ function renderAccount(a, opts={}) {
   const src = a.source ? `<div class="source">来源：${escapeHtml(a.source)}</div>` : '';
   const score = (opts.showScore && a.score != null) ? `<span class="score-pill">匹配度 ${(a.score*100).toFixed(0)}%</span>` : '';
   const cb = opts.checkbox ? `<input type="checkbox" class="select-cb" data-id="${a.id}">` : '';
+  // Only render an <img> when there is a URL: src="" makes the browser request
+  // the current page again (once per row), and lazy+async keeps a 200-row batch
+  // from firing 200 avatar requests at page load.
+  const avatar = a.profile_pic_url
+    ? `<img src="${a.profile_pic_url}" alt="" loading="lazy" decoding="async" width="40" height="40" onerror="this.style.display='none'">`
+    : `<div class="avatar-ph">${(a.username || '?').slice(0, 1).toUpperCase()}</div>`;
   return `<div class="result-item" data-id="${a.id}">
     ${cb}
-    <img src="${a.profile_pic_url || ''}" alt="" onerror="this.style.display='none'">
+    ${avatar}
     <div class="info">
       <div class="name">${platformTag(a.platform)} @${escapeHtml(a.username)} ${verified} <span class="full">${escapeHtml(a.full_name)}</span> ${cat} ${score}</div>
       <div class="meta">${stats.join(' · ') || '<span style="color:var(--text-3)">暂无统计数据</span>'}</div>

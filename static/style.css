@@ -477,6 +477,37 @@ select:disabled {
 .crm-table tr:last-child td {
   border-bottom: none;
 }
+
+/* The action cell's buttons must never wrap: a wrapped button sets the row
+   height for the whole table (rows were ~72px tall) and the sticky column then
+   clips at the right edge. */
+.crm-table td.action-col { white-space: nowrap; }
+
+/* A bare <select> inherits the global `select { width: 100% }`, which inside a
+   flex button row makes it take a whole line of its own (the 批量分配 picker
+   rendered as a full-width grey bar). */
+.btn-row select {
+  width: auto;
+  min-width: 150px;
+  padding: 5px 10px;
+  font-size: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  color: var(--text);
+}
+
+.btn-row select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(79,70,229,.1);
+}
+
+.btn-row select:disabled {
+  background: var(--surface-2);
+  color: var(--text-3);
+  cursor: not-allowed;
+}
 .crm-table th.action-col,
 .crm-table td.action-col {
   position: sticky;
@@ -842,6 +873,24 @@ select:disabled {
   object-fit: cover;
   background: var(--surface-2);
   flex-shrink: 0;
+}
+
+/* Fallback avatar for accounts with no profile_pic_url (imports/placeholders).
+   Avoids an <img src="">, which makes the browser re-request the page once per
+   row. */
+.result-item .avatar-ph {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-3);
+  color: var(--text-3);
+  font-size: 15px;
+  font-weight: 600;
+  text-transform: uppercase;
 }
 
 .result-item .info { flex: 1; min-width: 0; }

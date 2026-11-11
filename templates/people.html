@@ -7,14 +7,21 @@
   <p>按"人"为单位的总览。状态/标签/负责人可就地编辑；点 ✉ 联系会同时打开邮件客户端 + 标记已联系。</p>
 </div>
 
-<div class="card admin-only hidden" id="hydrateCard" style="border:1px dashed var(--accent);">
-  <div class="card-header"><div class="h-badge"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2s-6 7.5-6 12a6 6 0 0 0 12 0c0-4.5-6-12-6-12z"/></svg></div><h2>批量补全（hydrate placeholder）</h2></div>
-  <p style="color:var(--text2); margin:4px 0 12px;">把 <code>import:&lt;handle&gt;</code> 占位账号升格成真账号（拉 pk_id + bio + email），之后才能拿它们当「相似发现」种子。串行执行、断电可续。</p>
-  <div id="hydrateLauncher">
-    <button class="btn btn-accent" id="hydrateBtn" onclick="openHydrateModal()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2s-6 7.5-6 12a6 6 0 0 0 12 0c0-4.5-6-12-6-12z"/></svg> 批量补全</button>
-    <span id="hydrateActiveHint" style="margin-left:12px; color:var(--text2); font-size:12px;"></span>
+<div class="card admin-only hidden" id="hydrateCard" style="border:1px dashed var(--accent-soft); padding:14px 18px;">
+  <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+    <div class="h-badge"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2s-6 7.5-6 12a6 6 0 0 0 12 0c0-4.5-6-12-6-12z"/></svg></div>
+    <div style="flex:1; min-width:260px;">
+      <div style="font-weight:600; font-size:13px;">批量补全（hydrate placeholder）</div>
+      <div style="color:var(--text-2); font-size:11.5px; margin-top:2px; line-height:1.5;">
+        把 <code>import:&lt;handle&gt;</code> 占位账号升格成真账号（拉 pk_id + bio + email），之后才能当「相似发现」种子。串行执行、断电可续。
+      </div>
+    </div>
+    <div id="hydrateLauncher" style="display:flex; align-items:center; gap:10px;">
+      <button class="btn btn-accent btn-sm" id="hydrateBtn" onclick="openHydrateModal()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2s-6 7.5-6 12a6 6 0 0 0 12 0c0-4.5-6-12-6-12z"/></svg> 批量补全</button>
+      <span id="hydrateActiveHint" style="color:var(--text2); font-size:12px;"></span>
+    </div>
   </div>
-  <div id="hydrateProgress" class="hidden" style="margin-top:8px;">
+  <div id="hydrateProgress" class="hidden" style="margin-top:10px;">
     <div class="stats-bar" id="hydrateStats"></div>
     <div style="margin:8px 0 6px; font-size:13px; color:var(--text2);">
       <span id="hydrateCursor">0 / 0</span> 个 · 状态：<b id="hydrateStatus">running</b>
@@ -477,7 +484,7 @@ function renderTable(people) {
           <th style="width:32px;"><input type="checkbox" id="selAll" onclick="togglePage(this.checked)"></th>
           <th style="min-width:140px;">姓名</th>
           <th style="min-width:200px;">邮箱</th>
-          <th style="min-width:130px;">关联账号</th>
+          <th style="min-width:200px;">关联账号</th>
           <th style="min-width:80px;">粉丝</th>
           <th style="min-width:110px;">状态</th>
           <th style="min-width:110px;">合作强度</th>
@@ -486,7 +493,7 @@ function renderTable(people) {
           <th style="min-width:90px;">最近联系</th>
           <th style="min-width:90px;" title="入库时间（抓取/导入到 CRM 的时刻）。要找昨天的新客户，把上方「排序」切到「创建时间（新→旧）」。">入库时间</th>
           <th style="min-width:200px;">备注</th>
-          <th class="action-col" style="min-width:140px;">操作</th>
+          <th class="action-col" style="min-width:168px;">操作</th>
         </tr>
       </thead>
       <tbody>
@@ -620,7 +627,7 @@ function renderRow(p) {
       <td class="relative-time">${relTime(p.last_contacted_at)}</td>
       <td class="relative-time">${relTime(p.created_at)}</td>
       <td><input type="text" class="notes-input" value="${escapeHtml(p.notes || '')}" placeholder="点此添加备注" onblur="onChange(${p.id}, 'notes', this)"></td>
-      <td class="action-col"><div style="display:flex; gap:4px; align-items:center; flex-wrap:wrap;">${contactBtn}${hydrateBtn}${rejectBtn}</div></td>
+      <td class="action-col"><div style="display:flex; gap:6px; align-items:center; flex-wrap:nowrap;">${contactBtn}${hydrateBtn}${rejectBtn}</div></td>
     </tr>`;
 }
 
