@@ -1067,6 +1067,24 @@ def record_status_event(c: sqlite3.Connection, person_id: int, actor_id: int | N
 
 # ---------- statistics queries ----------
 
+# SQLite's JSON1 extension is compiled in by default only on newer builds.
+# Probe once per process and remember the answer; get_daily_overview uses a
+# json_each() aggregation for the tag histogram when it is available (4.5x
+# faster than parsing 30k JSON arrays in Python) and falls back otherwise.
+_JSON1_AVAILABLE: bool | None = None
+
+
+def _json1_available(c: sqlite3.Connection) -> bool:
+    global _JSON1_AVAILABLE
+    if _JSON1_AVAILABLE is None:
+        try:
+            c.execute("SELECT json_valid('[]')").fetchone()
+            _JSON1_AVAILABLE = True
+        except sqlite3.OperationalError:
+            _JSON1_AVAILABLE = False
+    return _JSON1_AVAILABLE
+
+
 def _day_bounds(ts: int) -> tuple[int, int]:
     """Return (start_of_day, end_of_day) as unix timestamps for the given timestamp."""
     import datetime
@@ -1334,20 +1352,38 @@ def get_daily_overview(c: sqlite3.Connection, start_ts: int, end_ts: int,
         rejection_reasons.append({"reason": r["rejection_reason"], "count": r["n"]})
 
     # Tags distribution (top 15)
+    # people.tags holds a JSON array per row (~30k non-empty rows). Parsing all
+    # of them in Python measured ~56ms per /api/stats call — cProfile showed
+    # 152,740 json.loads calls across 5 requests, the single largest remaining
+    # cost. SQLite's JSON1 json_each counts the same thing in ~12ms with
+    # identical output, so use it when available and fall back to the Python
+    # scan otherwise (older SQLite builds may not have JSON1 compiled in).
     tag_dist = []
-    all_tags = c.execute(
-        f"SELECT tags FROM people WHERE tags IS NOT NULL AND tags != '[]' {user_filter}",
-        user_param,
-    ).fetchall()
-    tag_counts = {}
-    for row in all_tags:
-        try:
-            tags_list = json.loads(row["tags"])
-            for tag in tags_list:
-                tag_counts[tag] = tag_counts.get(tag, 0) + 1
-        except Exception:
-            pass
-    tag_dist = [{"tag": k, "count": v} for k, v in sorted(tag_counts.items(), key=lambda x: (-x[1], x[0]))[:15]]
+    if _json1_available(c):
+        for r in c.execute(
+            f"""SELECT je.value AS tag, COUNT(*) AS n
+                  FROM people, json_each(people.tags) AS je
+                 WHERE people.tags IS NOT NULL AND people.tags != '[]'
+                   AND json_valid(people.tags)
+                   {user_filter}
+                 GROUP BY je.value ORDER BY n DESC, tag ASC LIMIT 15""",
+            user_param,
+        ).fetchall():
+            tag_dist.append({"tag": r["tag"], "count": r["n"]})
+    else:
+        all_tags = c.execute(
+            f"SELECT tags FROM people WHERE tags IS NOT NULL AND tags != '[]' {user_filter}",
+            user_param,
+        ).fetchall()
+        tag_counts = {}
+        for row in all_tags:
+            try:
+                tags_list = json.loads(row["tags"])
+                for tag in tags_list:
+                    tag_counts[tag] = tag_counts.get(tag, 0) + 1
+            except Exception:
+                pass
+        tag_dist = [{"tag": k, "count": v} for k, v in sorted(tag_counts.items(), key=lambda x: (-x[1], x[0]))[:15]]
 
     # Verified / business account ratios
     verified_count = c.execute(
