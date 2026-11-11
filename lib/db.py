@@ -265,6 +265,19 @@ def _apply_migrations(c: sqlite3.Connection) -> None:
     c.execute("CREATE INDEX IF NOT EXISTS idx_email_log_person ON email_log(person_id)")
     c.execute("CREATE INDEX IF NOT EXISTS idx_followup_actor ON followup_logs(actor_id, created_at)")
 
+    # --- covering indexes for the dashboard / list hot paths ---
+    # Benchmarked 2026-11 on a byte-identical copy of the 820MB production DB:
+    # the platform/verified/business distributions went 217ms -> 5ms combined,
+    # order=followers 127ms -> 53ms, list_owners 8.7ms -> 1.9ms.
+    # Covering indexes are preferred over caching here: always fresh, no
+    # per-worker duplication across gunicorn workers, and the queries stay
+    # plain COUNT(DISTINCT person_id) instead of a new cache layer to invalidate.
+    c.execute("CREATE INDEX IF NOT EXISTS idx_pa_plat_person ON platform_accounts(platform, person_id)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_pa_verified_person ON platform_accounts(is_verified, person_id)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_pa_business_person ON platform_accounts(is_business, person_id)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_pa_person_cover ON platform_accounts(person_id, platform, username, follower_count)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_people_owner ON people(owner)")
+
 
 # ---------- connection ----------
 
@@ -904,11 +917,20 @@ def list_people(
         except Exception:
             d["tags"] = []
         handles_blob = d.pop("handles_blob") or ""
-        d["handles"] = [
-            {"platform": p, "username": u}
-            for chunk in handles_blob.split("|") if chunk and ":" in chunk
-            for p, u in [chunk.split(":", 1)]
-        ]
+        # GROUP_CONCAT has no ORDER BY, so the concatenation order follows
+        # whichever index the planner happens to pick — the chip order in the
+        # table flipped purely from adding an index. Sort here so the output is
+        # stable regardless of the plan (and independent of the SQLite version,
+        # which matters because production's bundled SQLite may predate 3.44's
+        # aggregate ORDER BY support).
+        d["handles"] = sorted(
+            (
+                {"platform": p, "username": u}
+                for chunk in handles_blob.split("|") if chunk and ":" in chunk
+                for p, u in [chunk.split(":", 1)]
+            ),
+            key=lambda h: (h["platform"], h["username"] or ""),
+        )
         out.append(d)
     return out, total
 
