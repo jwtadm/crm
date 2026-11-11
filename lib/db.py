@@ -1445,70 +1445,82 @@ def get_trends(c: sqlite3.Connection, days: int = 7,
             day_list.append((day_start, int(day_start.timestamp()), int(day_end.timestamp())))
 
     result = []
-    for day_start, sts, ets in day_list:
-        tp = [sts, ets] + user_param
+    if not day_list:
+        return result
 
-        new_c = c.execute(
-            f"SELECT COUNT(*) AS n FROM people WHERE created_at >= ? AND created_at < ? {user_filter}",
-            tp,
-        ).fetchone()["n"]
+    # --- bucketed aggregation -------------------------------------------------
+    # One query per metric over the whole window, bucketed by day, instead of
+    # 7 queries per day (which meant 630 round-trips for a 90-day chart).
+    # Bucket index = (ts - window_start) / 86400. Exact because every day
+    # boundary in day_list is a whole Asia/Shanghai day and the zone has had no
+    # DST since 1991, so consecutive boundaries are exactly 86400s apart.
+    #
+    # Each SQL statement stays a literal at its own call site (this repo does
+    # not allow a generic SQL-forwarding helper — see AGENTS/Mimosa rules);
+    # only the *rows* are handed to _bucket_map below.
+    window_start = day_list[0][1]
+    window_end = day_list[-1][2]
+    n_days = len(day_list)
 
-        # Use status_events for "contacted" — consistent with summary KPI (RC-1)
-        contacted_c = c.execute(
-            f"""SELECT COUNT(DISTINCT se.person_id) AS n FROM status_events se
-                LEFT JOIN people p ON p.id = se.person_id
-                WHERE se.new_status='已联系' AND se.created_at >= ? AND se.created_at < ?
-                {user_filter}""",
-            tp,
-        ).fetchone()["n"]
+    def _bucket_map(rows) -> dict[int, int]:
+        out: dict[int, int] = {}
+        for row in rows:
+            b = row[0]
+            # Guard against a row landing outside the window (impossible given
+            # the WHERE clause) rather than silently growing the chart.
+            if b is not None and 0 <= b < n_days:
+                out[b] = row[1]
+        return out
 
-        emails_c = c.execute(
-            f"""SELECT COUNT(*) AS n FROM email_log el
-                JOIN people p ON p.id = el.person_id
-                WHERE el.sent_at >= ? AND el.sent_at < ? {user_filter}""",
-            tp,
-        ).fetchone()["n"]
+    new_c = _bucket_map(c.execute(
+        f"""SELECT (created_at - ?) / 86400 AS b, COUNT(*) AS n FROM people
+             WHERE created_at >= ? AND created_at < ? {user_filter}
+             GROUP BY b""",
+        [window_start, window_start, window_end] + user_param,
+    ).fetchall())
 
-        followups_c = c.execute(
-            f"""SELECT COUNT(*) AS n FROM followup_logs f
-                JOIN people p ON p.id = f.person_id
-                WHERE f.created_at >= ? AND f.created_at < ? {user_filter}""",
-            tp,
-        ).fetchone()["n"]
+    emails_c = _bucket_map(c.execute(
+        f"""SELECT (el.sent_at - ?) / 86400 AS b, COUNT(*) AS n FROM email_log el
+             JOIN people p ON p.id = el.person_id
+             WHERE el.sent_at >= ? AND el.sent_at < ? {user_filter}
+             GROUP BY b""",
+        [window_start, window_start, window_end] + user_param,
+    ).fetchall())
 
-        replies_c = c.execute(
-            f"""SELECT COUNT(DISTINCT se.person_id) AS n FROM status_events se
-                LEFT JOIN people p ON p.id = se.person_id
-                WHERE se.new_status='已回复' AND se.created_at >= ? AND se.created_at < ?
-                {user_filter}""",
-            tp,
-        ).fetchone()["n"]
+    followups_c = _bucket_map(c.execute(
+        f"""SELECT (f.created_at - ?) / 86400 AS b, COUNT(*) AS n FROM followup_logs f
+             JOIN people p ON p.id = f.person_id
+             WHERE f.created_at >= ? AND f.created_at < ? {user_filter}
+             GROUP BY b""",
+        [window_start, window_start, window_end] + user_param,
+    ).fetchall())
 
-        deals_c = c.execute(
-            f"""SELECT COUNT(DISTINCT se.person_id) AS n FROM status_events se
-                LEFT JOIN people p ON p.id = se.person_id
-                WHERE se.new_status='已成交' AND se.created_at >= ? AND se.created_at < ?
-                {user_filter}""",
-            tp,
-        ).fetchone()["n"]
+    # Funnel statuses: one query yields all four series.
+    # COUNT(DISTINCT person_id) per day, matching the previous per-day queries.
+    funnel: dict[tuple[int, str], int] = {}
+    for row in c.execute(
+        f"""SELECT (se.created_at - ?) / 86400 AS b, se.new_status AS s,
+                   COUNT(DISTINCT se.person_id) AS n
+              FROM status_events se
+              LEFT JOIN people p ON p.id = se.person_id
+             WHERE se.new_status IN ('已联系', '已回复', '已成交', '不适合')
+               AND se.created_at >= ? AND se.created_at < ? {user_filter}
+             GROUP BY b, s""",
+        [window_start, window_start, window_end] + user_param,
+    ).fetchall():
+        b = row[0]
+        if b is not None and 0 <= b < n_days:
+            funnel[(b, row[1])] = row[2]
 
-        # Use status_events '不适合' for "rejected" — consistent with summary (RC-6)
-        rejected_c = c.execute(
-            f"""SELECT COUNT(DISTINCT se.person_id) AS n FROM status_events se
-                LEFT JOIN people p ON p.id = se.person_id
-                WHERE se.new_status='不适合' AND se.created_at >= ? AND se.created_at < ?
-                {user_filter}""",
-            tp,
-        ).fetchone()["n"]
-
+    for i, (day_start, _sts, _ets) in enumerate(day_list):
         result.append({
             "date": day_start.strftime("%m-%d"),
-            "new_customers": new_c,
-            "contacted": contacted_c,
-            "emails_sent": emails_c,
-            "followups": followups_c,
-            "replies": replies_c,
-            "deals": deals_c,
-            "rejected": rejected_c,
+            "new_customers": new_c.get(i, 0),
+            "contacted": funnel.get((i, "已联系"), 0),
+            "emails_sent": emails_c.get(i, 0),
+            "followups": followups_c.get(i, 0),
+            "replies": funnel.get((i, "已回复"), 0),
+            "deals": funnel.get((i, "已成交"), 0),
+            "rejected": funnel.get((i, "不适合"), 0),
         })
     return result
