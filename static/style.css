@@ -179,7 +179,12 @@ body {
 @keyframes fade-up { from { opacity: 0; transform: translateY(6px) } to { opacity: 1; transform: none } }
 @keyframes spin { to { transform: rotate(360deg) } }
 
-.container { animation: fade-in .22s ease both; }
+/* NOTE: do NOT animate `.container`. An `animation` on it creates a stacking
+   context, which traps the drawer/modal z-index inside it and lets the sticky
+   nav (z-index 100) paint over the drawer (z-index 200). Animate the pieces
+   instead: they never contain fixed overlays. */
+.page-header { animation: fade-up .24s ease both; }
+.card { animation: fade-up .24s ease both; }
 .crm-table tbody tr { animation: fade-in .2s ease both; }
 
 /* Respect the OS setting: no movement, no looping spinners. */
@@ -2032,9 +2037,12 @@ select:disabled {
 .panel + .panel { margin-top: 10px; }
 
 /* Labelled field row inside a drawer */
-.field { display: grid; grid-template-columns: 68px 1fr; align-items: center; gap: 10px; }
+.field { display: grid; grid-template-columns: 68px minmax(0, 1fr); align-items: center; gap: 10px; }
 .field + .field { margin-top: 9px; }
 .field > .field-label { font-size: 12px; color: var(--text-2); }
+/* minmax(0,1fr) alone is not enough: a <select> reports its widest option as
+   min-content, so it used to push past the drawer padding. */
+.field > * { min-width: 0; }
 .field > input, .field > select, .field > textarea { width: 100%; }
 /* Multi-line control: keep the label in its column so the textarea lines up
    with the inputs above it instead of jutting 78px to the left. */
@@ -2082,10 +2090,18 @@ select:disabled {
 .tl-meta { font-size: 10.5px; color: var(--text-3); display: flex; gap: 8px; align-items: center; }
 .tl-text { font-size: 12.5px; color: var(--text); margin-top: 2px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
 .tl-del {
-  margin-left: auto; font-size: 10.5px; color: var(--text-3);
-  background: none; border: none; cursor: pointer; padding: 0 2px;
+  margin-left: auto;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--text-2);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: all .15s;
 }
-.tl-del:hover { color: var(--red); }
+.tl-del:hover { color: var(--red); border-color: var(--red); background: var(--red-light); }
 
 /* Datalist-style reminder rows */
 .rem-item {
