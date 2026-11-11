@@ -967,7 +967,7 @@ def list_owners(c: sqlite3.Connection) -> list[dict]:
         {"owner": r[0], "count": r[1]}
         for r in c.execute(
             "SELECT owner, COUNT(*) FROM people WHERE owner IS NOT NULL AND owner != '' "
-            "GROUP BY owner ORDER BY COUNT(*) DESC"
+            "GROUP BY owner ORDER BY COUNT(*) DESC, owner ASC"
         ).fetchall()
     ]
 
@@ -982,7 +982,7 @@ def list_statuses(c: sqlite3.Connection) -> list[dict]:
         {"status": r[0], "count": r[1]}
         for r in c.execute(
             "SELECT status, COUNT(*) FROM people WHERE status IS NOT NULL AND status != '' "
-            "GROUP BY status ORDER BY COUNT(*) DESC"
+            "GROUP BY status ORDER BY COUNT(*) DESC, status ASC"
         ).fetchall()
     ]
 
@@ -1217,22 +1217,26 @@ def get_daily_overview(c: sqlite3.Connection, start_ts: int, end_ts: int,
             })
 
     # Pipeline distribution (all customers, not just today)
+    # All distribution ORDER BYs carry a deterministic tie-break so an index
+    # change can never reshuffle rows that share a count (which also keeps
+    # baseline diffs meaningful).
     pipeline = []
     pipeline_rows = c.execute(
-        f"SELECT status, COUNT(*) AS n FROM people WHERE 1=1 {user_filter} GROUP BY status ORDER BY n DESC",
+        f"SELECT status, COUNT(*) AS n FROM people WHERE 1=1 {user_filter} GROUP BY status ORDER BY n DESC, status ASC",
         user_param,
     ).fetchall()
     for r in pipeline_rows:
         pipeline.append({"status": r["status"] or "未设置", "count": r["n"]})
 
-    # Platform distribution
+    # Platform distribution — ORDER BY platform ASC pins the current observed
+    # order (the query previously relied on scan order).
     platform_dist = []
     plat_rows = c.execute(
         f"""SELECT pa.platform, COUNT(DISTINCT pa.person_id) AS n
             FROM platform_accounts pa
             JOIN people p ON p.id = pa.person_id
             WHERE 1=1 {user_filter}
-            GROUP BY pa.platform""",
+            GROUP BY pa.platform ORDER BY pa.platform ASC""",
         user_param,
     ).fetchall()
     for r in plat_rows:
@@ -1245,7 +1249,7 @@ def get_daily_overview(c: sqlite3.Connection, start_ts: int, end_ts: int,
             FROM platform_accounts pa
             JOIN people p ON p.id = pa.person_id
             WHERE pa.country IS NOT NULL AND pa.country != '' {user_filter}
-            GROUP BY pa.country ORDER BY n DESC LIMIT 15""",
+            GROUP BY pa.country ORDER BY n DESC, pa.country ASC LIMIT 15""",
         user_param,
     ).fetchall()
     for r in country_rows:
@@ -1256,7 +1260,7 @@ def get_daily_overview(c: sqlite3.Connection, start_ts: int, end_ts: int,
     intent_rows = c.execute(
         f"""SELECT COALESCE(intent, '未评估') AS intent_label, COUNT(*) AS n
             FROM people WHERE 1=1 {user_filter}
-            GROUP BY intent_label ORDER BY n DESC""",
+            GROUP BY intent_label ORDER BY n DESC, intent_label ASC""",
         user_param,
     ).fetchall()
     for r in intent_rows:
@@ -1285,7 +1289,7 @@ def get_daily_overview(c: sqlite3.Connection, start_ts: int, end_ts: int,
            JOIN people p ON p.id = pa.person_id
            WHERE pa.is_rejected = 1 AND pa.rejection_reason IS NOT NULL AND pa.rejection_reason != ''
            {user_filter}
-           GROUP BY pa.rejection_reason ORDER BY n DESC LIMIT 10""",
+           GROUP BY pa.rejection_reason ORDER BY n DESC, pa.rejection_reason ASC LIMIT 10""",
         user_param,
     ).fetchall()
     for r in reason_rows:
@@ -1305,7 +1309,7 @@ def get_daily_overview(c: sqlite3.Connection, start_ts: int, end_ts: int,
                 tag_counts[tag] = tag_counts.get(tag, 0) + 1
         except Exception:
             pass
-    tag_dist = [{"tag": k, "count": v} for k, v in sorted(tag_counts.items(), key=lambda x: -x[1])[:15]]
+    tag_dist = [{"tag": k, "count": v} for k, v in sorted(tag_counts.items(), key=lambda x: (-x[1], x[0]))[:15]]
 
     # Verified / business account ratios
     verified_count = c.execute(
