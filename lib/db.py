@@ -1168,6 +1168,65 @@ def list_people_brief(
     return [dict(r) for r in rows], total
 
 
+def match_person_ids(
+    c: sqlite3.Connection,
+    *,
+    q: str = "",
+    status: str = "",
+    owner: str = "",
+    has_platform: str = "",
+    has_email: str = "",
+    order: str = "last_contacted",
+    limit: int = 100000,
+    assigned_user_id: int | str | None = None,
+    include_rejected: bool = False,
+) -> dict:
+    """Payload for /api/people/match_ids ("select all matching").
+
+    Same rows/order as list_people, but returns only what the endpoint ships:
+    the ids of matches that have an email, the total match count, and a 5-row
+    sample. The previous path built a dict per matched row (43k dicts) and then
+    a second list of 32k dicts to keep the first five — all discarded. That is
+    what made this the slowest read endpoint (p95 116ms) and the worst under
+    concurrent load.
+    """
+    where_sql, args = _people_where(
+        q=q, status=status, owner=owner, has_platform=has_platform,
+        has_email=has_email, assigned_user_id=assigned_user_id,
+        include_rejected=include_rejected,
+    )
+    total = c.execute(f"SELECT COUNT(*) FROM people p WHERE {where_sql}", args).fetchone()[0]
+    order_sql = _people_order_sql(order)
+    # ORDER BY followers needs the aggregate in scope.
+    if order == "followers":
+        from_sql = (
+            "people p LEFT JOIN ("
+            "  SELECT person_id, MAX(follower_count) AS max_followers"
+            "    FROM platform_accounts GROUP BY person_id"
+            ") agg ON agg.person_id = p.id"
+        )
+    else:
+        from_sql = "people p"
+
+    email_cond = "p.email IS NOT NULL AND p.email != ''"
+    ids = [r[0] for r in c.execute(
+        f"SELECT p.id FROM {from_sql} WHERE {where_sql} AND {email_cond} "
+        f"ORDER BY {order_sql} LIMIT ?",
+        [*args, limit],
+    ).fetchall()]
+    sample = [dict(r) for r in c.execute(
+        f"SELECT p.id, p.email, p.full_name FROM {from_sql} "
+        f"WHERE {where_sql} AND {email_cond} ORDER BY {order_sql} LIMIT 5",
+        args,
+    ).fetchall()]
+    return {
+        "ids": ids,
+        "total_matching": total,
+        "with_email": len(ids),
+        "sample": sample,
+    }
+
+
 # Statuses that are "ahead in the funnel" of 已联系 (or terminal). Sending
 # a group email or stamping a contact should NEVER downgrade these to
 # 已联系 — it would lose information the staff already recorded. We caught

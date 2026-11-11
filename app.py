@@ -514,7 +514,7 @@ def api_people_match_ids():
     # drops rows the table is showing (e.g. the 不适合 rows when the toggle is on).
     include_rejected = (args.get("include_rejected") or "").lower() in ("1", "true", "yes")
     with db.ro() as c:
-        rows, total = db.list_people_brief(
+        payload = db.match_person_ids(
             c,
             q=(args.get("q") or "").strip(),
             status=(args.get("status") or "").strip(),
@@ -523,13 +523,10 @@ def api_people_match_ids():
             has_email=(args.get("has_email") or "").strip(),
             order=(args.get("order") or "last_contacted").strip(),
             limit=100000,
-            offset=0,
             assigned_user_id=assigned_filter,
             include_rejected=include_rejected,
         )
-    with_email = [{"id": r["id"], "email": r["email"], "full_name": r.get("full_name")} for r in rows if r.get("email")]
-    return jsonify({"ids": [r["id"] for r in with_email], "total_matching": total,
-                    "with_email": len(with_email), "sample": with_email[:5]})
+    return jsonify(payload)
 
 
 @app.route("/api/people/<int:person_id>", methods=["DELETE"])
