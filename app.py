@@ -1541,6 +1541,35 @@ def api_db_stats():
     return jsonify(_stats())
 
 
+@app.route("/api/bootstrap")
+@auth.login_required
+def api_bootstrap():
+    """Everything the page shell needs, in one round trip.
+
+    A page used to fire /api/auth/me + /api/db/stats + /api/admin/active_staff
+    (+ the similarity/hydrate job lookup) on load: 3-5 requests, each with its
+    own connection and its own chance to be slow. One call returns all of it.
+
+    Shape mirrors the endpoints it replaces so the frontend did not have to
+    change how it reads the data.
+    """
+    u = auth.current_user()
+    out = {
+        "user": {k: u[k] for k in ("id", "username", "email", "display_name", "role",
+                                   "is_active", "must_change_pw", "last_login_at")},
+        "nav_stats": _stats(),
+        "staff": (auth.list_active_staff_and_admins() if u["role"] == "admin" else []),
+        "active_jobs": {
+            "email": None,
+            "similarity": bulk_similarity.find_active_job(),
+            "hydrate": bulk_hydrate.find_active_job(),
+        },
+    }
+    full = auth.get_user(u["id"]) or {}
+    out["user"]["reply_to_email"] = full.get("reply_to_email") or ""
+    return jsonify(out)
+
+
 # ============================================================
 # Statistics / Dashboard API
 # ============================================================
@@ -2570,25 +2599,13 @@ def api_query_run():
 #  Excel export (accounts)
 # ============================================================
 
-@app.route("/api/db/export", methods=["POST"])
-@auth.admin_required
-def api_db_export():
-    """Stream every account as an .xlsx.
+def _build_export_xlsx(rows, progress=None) -> bytes:
+    """Render the account export to xlsx bytes.
 
-    Two changes made this ~4x faster (24s -> ~6s on the 45k-row production DB)
-    with byte-identical cell content:
-      * fetch only the 16 columns the sheet needs (3.5s -> 0.9s). The table's
-        rows are wide — raw 19KB + embedding 16KB share the row — so every
-        extra column costs a page read.
-      * xlsxwriter instead of openpyxl: openpyxl hashes every style object per
-        cell (1.35M style assignments, 5.4M hashes); xlsxwriter applies one
-        format per row via write_row.
+    `progress(done, total)` is called every PROGRESS_EVERY rows so a background
+    export job can report a real percentage instead of a spinner that says
+    nothing for 6 seconds.
     """
-    payload = request.json or {}
-    ids = payload.get("account_ids")
-    with db.ro() as c:
-        rows = db.list_accounts_for_export(c, ids)
-
     headers = [
         "Platform", "Username", "Full Name", "Email", "Phone",
         "Followers", "Following", "Posts", "Verified", "Category",
@@ -2616,6 +2633,7 @@ def api_db_export():
         ws.set_column(i, i, w)
     ws.write_row(0, 0, headers, header_fmt)
 
+    total = len(rows)
     for r_idx, r in enumerate(rows, 1):
         # Positional unpack: the SELECT column order is db._EXPORT_COLS.
         # Named access (r["username"]) on 45k x 15 cells costs ~2s because each
@@ -2633,13 +2651,139 @@ def api_db_export():
         ws.write_row(r_idx, 0, vals[:10], body_fmt)
         ws.write(r_idx, 10, vals[10], wrap_fmt)      # biography wraps
         ws.write_row(r_idx, 11, vals[11:], body_fmt)
+        if progress and r_idx % 500 == 0:
+            progress(r_idx, total)
 
-    ws.autofilter(0, 0, max(len(rows), 1), len(headers) - 1)
+    ws.autofilter(0, 0, max(total, 1), len(headers) - 1)
     ws.freeze_panes(1, 0)
     wb.close()
-    buf.seek(0)
+    if progress:
+        progress(total, total)
+    return buf.getvalue()
+
+
+@app.route("/api/db/export", methods=["POST"])
+@auth.admin_required
+def api_db_export():
+    """Synchronous export (kept for scripts / tools/api_test.py).
+
+    The UI uses the job API below instead, so the button can show progress.
+    """
+    payload = request.json or {}
+    ids = payload.get("account_ids")
+    with db.ro() as c:
+        rows = db.list_accounts_for_export(c, ids)
+    data = _build_export_xlsx(rows)
     return send_file(
-        buf, as_attachment=True, download_name="creators.xlsx",
+        io.BytesIO(data), as_attachment=True, download_name="creators.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+# ── Export as a background job, so the button can show real progress ────────
+# The synchronous endpoint above gives the browser nothing to show for ~6s
+# (click → silence → file). This variant reports rows-written/total so the UI
+# can render a percentage. Jobs live in memory only: the file is a few MB and
+# is discarded shortly after download.
+_EXPORT_JOBS: dict[str, dict] = {}
+_EXPORT_JOB_KEEP = 3
+_EXPORT_JOB_TTL = 15 * 60      # seconds until an abandoned export is dropped
+
+
+def _export_job_gc() -> None:
+    now = time.time()
+    dead = [jid for jid, j in _EXPORT_JOBS.items()
+            if now - j.get("created_at", now) > _EXPORT_JOB_TTL]
+    for jid in dead:
+        _EXPORT_JOBS.pop(jid, None)
+    # keep only the newest few regardless of age
+    for jid in sorted(_EXPORT_JOBS, key=lambda k: _EXPORT_JOBS[k].get("created_at", 0))[:-_EXPORT_JOB_KEEP]:
+        _EXPORT_JOBS.pop(jid, None)
+
+
+def _run_export_job(job_id: str, ids: list[int] | None) -> None:
+    job = _EXPORT_JOBS.get(job_id)
+    if not job:
+        return
+    try:
+        job["stage"] = "reading"
+        with db.ro() as c:
+            rows = db.list_accounts_for_export(c, ids)
+        job["total"] = len(rows)
+        job["stage"] = "writing"
+
+        def progress(done: int, total: int) -> None:
+            job["done"] = done
+            job["total"] = total
+
+        job["data"] = _build_export_xlsx(rows, progress)
+        job["status"] = "done"
+        job["stage"] = "done"
+        job["finished_at"] = time.time()
+    except Exception as e:
+        job["status"] = "failed"
+        job["error"] = str(e)[:300]
+        job["finished_at"] = time.time()
+
+
+@app.route("/api/db/export/start", methods=["POST"])
+@auth.admin_required
+def api_db_export_start():
+    """Body: {account_ids?: int[]}. Returns {job_id} immediately."""
+    payload = request.json or {}
+    ids = payload.get("account_ids")
+    _export_job_gc()
+    job_id = uuid.uuid4().hex[:12]
+    _EXPORT_JOBS[job_id] = {
+        "id": job_id, "status": "running", "stage": "reading",
+        "done": 0, "total": 0, "created_at": time.time(),
+        "created_by": auth.current_user()["id"], "data": None, "error": None,
+    }
+    threading.Thread(target=_run_export_job, args=(job_id, ids), daemon=True).start()
+    return jsonify({"job_id": job_id})
+
+
+def _export_job_for_current_user(job_id: str) -> dict | None:
+    job = _EXPORT_JOBS.get(job_id)
+    if not job:
+        return None
+    u = auth.current_user()
+    if u["role"] != "admin" and job["created_by"] != u["id"]:
+        return None
+    return job
+
+
+@app.route("/api/db/export/<job_id>")
+@auth.admin_required
+def api_db_export_status(job_id: str):
+    job = _export_job_for_current_user(job_id)
+    if not job:
+        return jsonify({"error": "not_found"}), 404
+    total = job.get("total") or 0
+    done = job.get("done") or 0
+    return jsonify({
+        "id": job_id,
+        "status": job["status"],
+        "stage": job.get("stage"),
+        "done": done,
+        "total": total,
+        "percent": round(done * 100.0 / total, 1) if total else 0,
+        "error": job.get("error"),
+        "ready": job["status"] == "done" and bool(job.get("data")),
+    })
+
+
+@app.route("/api/db/export/<job_id>/file")
+@auth.admin_required
+def api_db_export_file(job_id: str):
+    job = _export_job_for_current_user(job_id)
+    if not job:
+        return jsonify({"error": "not_found"}), 404
+    if job["status"] != "done" or not job.get("data"):
+        return jsonify({"error": "not_ready"}), 409
+    data = job["data"]
+    return send_file(
+        io.BytesIO(data), as_attachment=True, download_name="creators.xlsx",
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
@@ -2652,6 +2796,54 @@ def api_db_export():
 @auth.admin_required
 def api_admin_users_list():
     return jsonify({"users": auth.list_users()})
+
+
+@app.route("/api/admin/users", methods=["POST"])
+@auth.admin_required
+def api_admin_user_create():
+    """Create a staff account and return a one-time temporary password.
+
+    The admin never types a password: the server generates one and the new user
+    must change it on first login (must_change_pw), same flow as
+    reset_password. That keeps admin-chosen weak passwords out of the system.
+
+    Body: {username, display_name?, email?, role?}
+    """
+    payload = request.json or {}
+    username = (payload.get("username") or "").strip()
+    display_name = (payload.get("display_name") or "").strip()
+    email = contact.normalize_email(payload.get("email"))
+    role = (payload.get("role") or "staff").strip()
+
+    if not username:
+        return jsonify({"error": "missing_username", "detail": "用户名必填"}), 400
+    if len(username) > 64 or any(ch.isspace() for ch in username):
+        return jsonify({"error": "bad_username",
+                        "detail": "用户名不能包含空格，长度不超过 64"}), 400
+    if role not in ("admin", "staff"):
+        return jsonify({"error": "bad_role"}), 400
+    if auth.get_user_by_username(username):
+        return jsonify({"error": "username_taken", "detail": "用户名已存在"}), 409
+    if email and auth.get_user_by_email(email):
+        return jsonify({"error": "email_taken", "detail": "邮箱已被使用"}), 409
+
+    temp = "".join(_secrets.choice(_TEMP_PW_ALPHABET) for _ in range(_TEMP_PW_LEN))
+    try:
+        uid = auth.create_user(
+            username=username, email=email or None,
+            display_name=display_name or username,
+            password=temp, role=role, is_active=1, must_change_pw=1,
+        )
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:                     # unique constraint race
+        if "UNIQUE" in str(e).upper():
+            return jsonify({"error": "username_taken"}), 409
+        raise
+    audit.log(auth.current_user()["id"], "user.create", f"user:{uid}",
+              {"username": username, "role": role})
+    return jsonify({"ok": True, "id": uid, "temp_password": temp,
+                    "must_change_pw": True})
 
 
 @app.route("/api/admin/active_staff")

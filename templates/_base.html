@@ -109,7 +109,16 @@ async function refreshUser() {
   if (window.CURRENT_USER) {
     const u = window.CURRENT_USER;
     const role = u.role === 'admin' ? '<span class="role-badge role-admin">admin</span>' : '<span class="role-badge role-staff">staff</span>';
-    el.innerHTML = `${role} <span>${escapeHtml(u.display_name || u.username)}</span> <a href="/change_password">改密码</a> <a href="#" id="logoutBtn">退出</a>`;
+    el.innerHTML = `${role}
+      <span class="nav-user-name">${escapeHtml(u.display_name || u.username)}</span>
+      <a href="/change_password" class="nav-btn" title="修改登录密码">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="4.5"/><path d="m10.7 12.3 8.3-8.3"/><path d="m15.5 7.5 2.5 2.5"/><path d="m18.5 4.5 2 2"/></svg>
+        改密码
+      </a>
+      <a href="#" id="logoutBtn" class="nav-btn" title="退出登录">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg>
+        退出
+      </a>`;
     document.getElementById('logoutBtn').onclick = async (e) => {
       e.preventDefault();
       await fetch('/api/auth/logout', {method: 'POST'});
@@ -120,8 +129,66 @@ async function refreshUser() {
   }
   applyRoleVisibility();
 }
-refreshUser();
-refreshNavStats();
+
+// One request for the whole page shell (user + nav counters + staff list +
+// active background jobs). Previously every page fired 3-5 separate requests on
+// load; this is a single round trip against a single DB connection.
+async function refreshShell() {
+  let data = null;
+  try {
+    const r = await fetch('/api/bootstrap');
+    if (r.ok) data = await r.json();
+  } catch (e) {}
+  if (!data) {                       // bootstrap unavailable → degrade to the old calls
+    await refreshUser();
+    await refreshNavStats();
+    return;
+  }
+  window.CURRENT_USER = data.user;
+  window.STAFF_LIST = data.staff || [];
+  window.ACTIVE_JOBS = data.active_jobs || {};
+  renderNavStats(data.nav_stats);
+  renderNavUser(data.user);
+  applyRoleVisibility();
+}
+
+function renderNavStats(s) {
+  if (!s) return;
+  const by = s.by_platform || {};
+  const parts = [`<b>${s.people}</b>人`, `<b>${s.total}</b>账号`];
+  for (const p of ALL_PLATFORMS) {
+    parts.push(`<b>${by[p] || 0}</b>${PLATFORM_LABEL[p]}`);
+  }
+  const el = document.getElementById('navStats');
+  if (el) el.innerHTML = parts.join('<span style="color:var(--border-strong)"> · </span>');
+}
+
+function renderNavUser(u) {
+  const el = document.getElementById('navUser');
+  if (!el) return;
+  if (!u) { el.innerHTML = '<a href="/login">登录</a>'; return; }
+  const role = u.role === 'admin'
+    ? '<span class="role-badge role-admin">admin</span>'
+    : '<span class="role-badge role-staff">staff</span>';
+  el.innerHTML = `${role}
+    <span class="nav-user-name">${escapeHtml(u.display_name || u.username)}</span>
+    <a href="/change_password" class="nav-btn" title="修改登录密码">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="4.5"/><path d="m10.7 12.3 8.3-8.3"/><path d="m15.5 7.5 2.5 2.5"/><path d="m18.5 4.5 2 2"/></svg>
+      改密码
+    </a>
+    <a href="#" id="logoutBtn" class="nav-btn" title="退出登录">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg>
+      退出
+    </a>`;
+  const btn = document.getElementById('logoutBtn');
+  if (btn) btn.onclick = async (e) => {
+    e.preventDefault();
+    await fetch('/api/auth/logout', {method: 'POST'});
+    location.href = '/login';
+  };
+}
+
+refreshShell();
 
 // shared helpers
 function fmt(n) {
@@ -138,6 +205,65 @@ function escapeHtml(s) {
 function platformTag(p) {
   return `<span class="platform-tag platform-${p}">${p}</span>`;
 }
+
+// Small non-blocking notification. Replaces alert() for routine confirmations
+// (alert steals focus, blocks the thread and looks dated).
+function toast(msg, kind) {
+  let wrap = document.querySelector('.toast-wrap');
+  if (!wrap) {
+    wrap = document.createElement('div');
+    wrap.className = 'toast-wrap';
+    document.body.appendChild(wrap);
+  }
+  const el = document.createElement('div');
+  el.className = 'toast ' + (kind || '');
+  el.textContent = msg;
+  wrap.appendChild(el);
+  setTimeout(() => {
+    el.style.transition = 'opacity .2s, transform .2s';
+    el.style.opacity = '0';
+    el.style.transform = 'translateY(6px)';
+    setTimeout(() => el.remove(), 220);
+  }, 2600);
+}
+
+// Placeholder rows shaped like a real list/table, used while a fetch is in
+// flight so the page never flashes "加载中…" text or jumps when data lands.
+function skeletonList(rows, opts) {
+  const o = opts || {};
+  const withAvatar = o.avatar !== false;
+  let html = '';
+  for (let i = 0; i < rows; i++) {
+    const w1 = 30 + ((i * 17) % 40);
+    const w2 = 45 + ((i * 23) % 35);
+    html += `<div class="sk-row">
+      ${withAvatar ? '<div class="skeleton sk-av"></div>' : ''}
+      <div class="sk-col">
+        <div class="skeleton sk-line" style="width:${w1}%"></div>
+        <div class="skeleton sk-line" style="width:${w2}%;opacity:.7"></div>
+      </div>
+    </div>`;
+  }
+  return html;
+}
+
+function skeletonTable(cols, rows, widths) {
+  const ws = widths || [];
+  let html = '<table class="crm-table"><thead><tr>';
+  for (let i = 0; i < cols; i++) {
+    html += `<th style="min-width:${ws[i] || 120}px;">`
+         + `<div class="skeleton sk-line" style="width:${40 + (i * 7) % 40}%"></div></th>`;
+  }
+  html += '</tr></thead><tbody>';
+  for (let r = 0; r < rows; r++) {
+    html += '<tr>';
+    for (let i = 0; i < cols; i++) {
+      html += `<td><div class="skeleton sk-line" style="width:${35 + ((r * 13 + i * 19) % 55)}%"></div></td>`;
+    }
+    html += '</tr>';
+  }
+  return html + '</tbody></table>';
+}
 function renderAccount(a, opts={}) {
   const stats = [];
   if (a.follower_count != null) stats.push(`<b>${fmt(a.follower_count)}</b> 粉丝`);
@@ -153,12 +279,18 @@ function renderAccount(a, opts={}) {
   const src = a.source ? `<div class="source">来源：${escapeHtml(a.source)}</div>` : '';
   const score = (opts.showScore && a.score != null) ? `<span class="score-pill">匹配度 ${(a.score*100).toFixed(0)}%</span>` : '';
   const cb = opts.checkbox ? `<input type="checkbox" class="select-cb" data-id="${a.id}">` : '';
-  // Only render an <img> when there is a URL: src="" makes the browser request
-  // the current page again (once per row), and lazy+async keeps a 200-row batch
-  // from firing 200 avatar requests at page load.
-  const avatar = a.profile_pic_url
-    ? `<img src="${a.profile_pic_url}" alt="" loading="lazy" decoding="async" width="40" height="40" onerror="this.style.display='none'">`
-    : `<div class="avatar-ph">${(a.username || '?').slice(0, 1).toUpperCase()}</div>`;
+  // Avatar: a fixed 40px box that always occupies its slot. The initials sit
+  // underneath and the <img> is layered on top, so a missing / 404 / blocked
+  // picture simply reveals the initials — the old onerror="display:none"
+  // removed the box entirely and the name text slid left, which read as a
+  // broken row. src="" is never emitted (it makes the browser re-request the
+  // current page, once per row) and lazy+async keeps a long batch cheap.
+  const initial = ((a.username || a.full_name || '?') + '').trim().slice(0, 1).toUpperCase() || '?';
+  const avatar = `<div class="avatar">${escapeHtml(initial)}${
+    a.profile_pic_url
+      ? `<img src="${a.profile_pic_url}" alt="" loading="lazy" decoding="async" onerror="this.remove()">`
+      : ''
+  }</div>`;
   return `<div class="result-item" data-id="${a.id}">
     ${cb}
     ${avatar}

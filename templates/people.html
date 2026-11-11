@@ -117,9 +117,10 @@
     <label class="filter-label" title="滚动到底部会自动继续加载；这里可一次跳到指定数量">
       每批
       <select id="pageSizeSel" onchange="reloadFiltered()">
-        <option value="100" selected>100</option>
+        <option value="20" selected>20</option>
+        <option value="50">50</option>
+        <option value="100">100</option>
         <option value="200">200</option>
-        <option value="500">500</option>
       </select>
     </label>
   </div>
@@ -265,7 +266,7 @@ function intentOptionsHtml(current) {
     `<option value="${v}" ${v === cur ? 'selected' : ''}>${v}</option>`
   ).join('');
 }
-const PAGE_SIZE_DEFAULT = 100;
+const PAGE_SIZE_DEFAULT = 20;
 function pageSize() {
   const el = document.getElementById('pageSizeSel');
   return el ? (parseInt(el.value, 10) || PAGE_SIZE_DEFAULT) : PAGE_SIZE_DEFAULT;
@@ -350,7 +351,7 @@ async function loadList() {
   const prevScrollTop = wrap ? wrap.scrollTop : 0;
   const prevWindowY = window.scrollY;
 
-  document.getElementById('tableWrap').innerHTML = '<div class="empty">加载中…</div>';
+  document.getElementById('tableWrap').innerHTML = skeletonTable(13, 8, [32,140,200,200,80,110,110,130,140,90,90,200,168]);
   try {
     const r = await fetch('/api/people/list?' + params.toString());
     const d = await r.json();
@@ -409,8 +410,8 @@ function updateSentinel() {
   if (!el) return;
   if (!_total || _offset >= _total) { el.style.display = 'none'; return; }
   el.style.display = '';
-  el.textContent = _loadingMore
-    ? '加载中…'
+  el.innerHTML = _loadingMore
+    ? '<span class="spinner" style="display:inline-block;vertical-align:-2px;margin-right:6px;"></span>正在加载下一批…'
     : `继续向下滚动加载更多（还剩 ${(_total - _offset).toLocaleString()} 人）`;
 }
 
@@ -455,7 +456,7 @@ function initScrollPagination() {
     // batch is usually already there by the time you reach the bottom.
     new IntersectionObserver(entries => {
       if (entries.some(e => e.isIntersecting)) loadMore();
-    }, {rootMargin: '800px 0px'}).observe(el);
+    }, {rootMargin: '320px 0px'}).observe(el);
   } else {
     window.addEventListener('scroll', () => {
       const r = el.getBoundingClientRect();
@@ -474,7 +475,7 @@ function renderTable(people) {
   }
   const isAdmin = window.CURRENT_USER && window.CURRENT_USER.role === 'admin';
   const ownerHeader = isAdmin
-    ? `<th style="min-width:140px;">分配给</th>`
+    ? `<th style="min-width:112px;">分配给</th>`
     : `<th style="min-width:110px;">负责人</th>`;
   const html = `
     <div style="overflow-x: auto;">
@@ -482,18 +483,18 @@ function renderTable(people) {
       <thead>
         <tr>
           <th style="width:32px;"><input type="checkbox" id="selAll" onclick="togglePage(this.checked)"></th>
-          <th style="min-width:140px;">姓名</th>
-          <th style="min-width:200px;">邮箱</th>
-          <th style="min-width:200px;">关联账号</th>
-          <th style="min-width:80px;">粉丝</th>
-          <th style="min-width:110px;">状态</th>
-          <th style="min-width:110px;">合作强度</th>
-          <th style="min-width:130px;">标签</th>
+          <th style="min-width:110px;">姓名</th>
+          <th style="min-width:160px;">邮箱</th>
+          <th style="min-width:165px;">关联账号</th>
+          <th style="min-width:72px;">粉丝</th>
+          <th style="min-width:104px;">状态</th>
+          <th style="min-width:104px;">合作强度</th>
+          <th style="min-width:100px;">标签</th>
           ${ownerHeader}
-          <th style="min-width:90px;">最近联系</th>
-          <th style="min-width:90px;" title="入库时间（抓取/导入到 CRM 的时刻）。要找昨天的新客户，把上方「排序」切到「创建时间（新→旧）」。">入库时间</th>
-          <th style="min-width:200px;">备注</th>
-          <th class="action-col" style="min-width:168px;">操作</th>
+          <th style="min-width:92px;">最近联系</th>
+          <th style="min-width:92px;" title="入库时间（抓取/导入到 CRM 的时刻）。要找昨天的新客户，把上方「排序」切到「创建时间（新→旧）」。">入库时间</th>
+          <th style="min-width:130px;">备注</th>
+          <th class="action-col" style="min-width:152px;">操作</th>
         </tr>
       </thead>
       <tbody>
@@ -1671,23 +1672,25 @@ function renderJobLog(log) {
 window.STAFF_LIST = [];
 
 async function bootstrapStaff() {
-  // Wait for /api/auth/me to populate window.CURRENT_USER (refreshUser fires
-  // async on page load). Poll briefly then fetch staff for admin only.
-  for (let i = 0; i < 30 && !window.CURRENT_USER; i++) await new Promise(r => setTimeout(r, 50));
+  // window.STAFF_LIST now arrives with /api/bootstrap (the shared page shell),
+  // so this no longer makes its own request. Wait for the shell, then fall back
+  // to the dedicated endpoint only if it never came.
+  for (let i = 0; i < 40 && !window.CURRENT_USER; i++) await new Promise(r => setTimeout(r, 50));
   if (window.CURRENT_USER && window.CURRENT_USER.role === 'admin') {
-    try {
-      const r = await fetch('/api/admin/active_staff');
-      const d = await r.json();
-      window.STAFF_LIST = d.users || [];
-      // populate filters and bulk-assign dropdowns
-      const aSel = document.getElementById('assignSel');
-      const bSel = document.getElementById('bulkAssignSel');
-      const opts = window.STAFF_LIST.map(u =>
-        `<option value="${u.id}">${escapeHtml(u.display_name || u.username)} (${u.role})</option>`
-      ).join('');
-      if (aSel) aSel.insertAdjacentHTML('beforeend', opts);
-      if (bSel) bSel.innerHTML = '<option value="">— 未分配 —</option>' + opts;
-    } catch (e) {}
+    if (!window.STAFF_LIST || !window.STAFF_LIST.length) {
+      try {
+        const r = await fetch('/api/admin/active_staff');
+        const d = await r.json();
+        window.STAFF_LIST = d.users || [];
+      } catch (e) { window.STAFF_LIST = []; }
+    }
+    const aSel = document.getElementById('assignSel');
+    const bSel = document.getElementById('bulkAssignSel');
+    const opts = (window.STAFF_LIST || []).map(u =>
+      `<option value="${u.id}">${escapeHtml(u.display_name || u.username)} (${u.role})</option>`
+    ).join('');
+    if (aSel) aSel.insertAdjacentHTML('beforeend', opts);
+    if (bSel) bSel.innerHTML = '<option value="">— 未分配 —</option>' + opts;
   }
   loadList();
   initScrollPagination();
@@ -1724,14 +1727,19 @@ async function loadHydrateActive() {
   // Only fetch if admin (the endpoint is admin-only; non-admins get 401)
   if (!window.CURRENT_USER || window.CURRENT_USER.role !== 'admin') return;
   try {
-    const r = await fetch('/api/hydrate/bulk/active');
-    if (!r.ok) return;
-    const d = await r.json();
-    if (d.job) {
-      hydrateActiveJobId = d.job.id;
+    // The shell already told us whether a job is live; only hit the dedicated
+    // endpoint when it does not know (e.g. bootstrap failed).
+    let job = (window.ACTIVE_JOBS || {}).hydrate;
+    if (job === undefined) {
+      const r = await fetch('/api/hydrate/bulk/active');
+      if (!r.ok) return;
+      job = (await r.json()).job;
+    }
+    if (job) {
+      hydrateActiveJobId = job.id;
       hydrateSetLauncher(false);
-      renderHydrateJob(d.job);
-      if (d.job.status === 'running') startHydratePoll();
+      renderHydrateJob(job);
+      if (job.status === 'running') startHydratePoll();
     } else {
       hydrateSetLauncher(true);
       document.getElementById('hydrateActiveHint').textContent = '';

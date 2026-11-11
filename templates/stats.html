@@ -528,7 +528,25 @@ function renderRejections(data) {
 
 function renderTrendChart(trends) {
   const container = document.getElementById('trendChart');
-  if (!trends || !trends.length) { container.innerHTML = '<div class="stats-empty">暂无趋势数据</div>'; return; }
+  const emptyHtml = (msg, hint) =>
+    `<div class="stats-empty">
+       <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 14 3-3 3 3 4-5"/></svg>
+       <div>${msg}</div>
+       ${hint ? `<div class="hint">${hint}</div>` : ''}
+     </div>`;
+  if (!trends || !trends.length) { container.innerHTML = emptyHtml('暂无趋势数据'); return; }
+
+  // The API always returns one bucket per day, so a quiet period arrives as a
+  // list of zeros. That used to render as ~200px of blank space with just the
+  // legend beneath it; say so explicitly instead.
+  const grandTotal = trends.reduce((sum, t) =>
+    sum + (t.new_customers || 0) + (t.contacted || 0) + (t.emails_sent || 0)
+        + (t.replies || 0) + (t.deals || 0) + (t.rejected || 0), 0);
+  if (grandTotal === 0) {
+    container.innerHTML = emptyHtml('这个时间段还没有数据',
+      '换个时间范围，或先去客户管理里记录联系 / 跟进');
+    return;
+  }
 
   // Update badge text based on current range selection
   const badge = document.getElementById('trendBadge');

@@ -17,10 +17,17 @@
   </div>
   <div class="btn-row" style="margin-top:6px;">
     <button class="btn btn-orange btn-sm" onclick="embedMissing()" title="给所有还没生成 embedding 的账号补一遍 embedding。重排功能依赖它。">补全 bio embedding</button>
-    <button class="btn btn-green btn-sm" onclick="exportExcel()">导出 Excel</button>
+    <button class="btn btn-green btn-sm" id="exportBtn" onclick="exportExcel()">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
+      导出 Excel
+    </button>
     <button class="btn btn-ghost btn-sm" onclick="clearDb()" style="color: var(--red); border-color: var(--red);">清空数据库</button>
     <span id="opStatus" style="color:var(--text2); font-size:12px;"></span>
     <span id="dbCount" style="color:var(--text2); font-size:12px; margin-left:auto;"></span>
+  </div>
+  <div id="exportProgress" style="display:none; margin-top:10px;">
+    <div class="progress-track"><div class="progress-fill" id="exportFill"></div></div>
+    <div id="exportLabel" style="font-size:11.5px; color:var(--text-2); margin-top:6px;"></div>
   </div>
   <div id="dbList" class="list" style="margin-top:12px; max-height:none;"><div class="empty">加载中…</div></div>
   <div id="dbMore" class="load-more" style="display:none;"></div>
@@ -53,7 +60,7 @@ let _listSeq = 0;
 // no offset, so of 45k accounts only the top 500 were ever reachable.
 // A description-based rerank re-sorts the batch in Python, so paging does not
 // compose with it — that mode stays single-batch and the footer says so.
-const DB_BATCH = 200;
+const DB_BATCH = 20;
 let _dbOffset = 0;
 let _dbCount = 0;
 let _dbLoading = false;
@@ -87,26 +94,62 @@ function updateDbFooter() {
   if (!el) return;
   if (_dbDone) { el.style.display = 'none'; return; }
   el.style.display = '';
-  el.textContent = _dbLoading ? '加载中…' : '继续向下滚动加载更多';
+  el.innerHTML = _dbLoading
+    ? '<span class="spinner" style="display:inline-block;vertical-align:-2px;margin-right:6px;"></span>正在加载下一批…'
+    : '继续向下滚动加载更多';
 }
 
 function bindDbRows() {
-  document.querySelectorAll('#dbList .result-item').forEach(it => {
+  document.querySelectorAll('#dbList .acct-row').forEach(it => {
     if (it.dataset.bound) return;
     it.dataset.bound = '1';
     it.addEventListener('click', e => {
       if (e.target.tagName === 'A') return;
       openDrawer(+it.dataset.id);
     });
-    it.style.cursor = 'pointer';
   });
+}
+
+// Compact two-line row for the account browser. The shared renderAccount()
+// card is 4-5 lines tall, which is fine for a 20-result discovery list but
+// makes scanning 45k accounts painful.
+function renderAccountRow(a, showScore) {
+  const initial = ((a.username || a.full_name || '?') + '').trim().slice(0, 1).toUpperCase() || '?';
+  const avatar = '<div class="avatar">' + escapeHtml(initial) + '' +
+    (a.profile_pic_url
+      ? '<img src="' + a.profile_pic_url + '" alt="" loading="lazy" decoding="async" onerror="this.remove()">'
+      : '') + '</div>';
+  const verified = a.is_verified ? '<span class="check" title="平台认证">&#10003;</span>' : '';
+  const cat = a.category ? '<span class="cat-tag">' + escapeHtml(a.category) + '</span>' : '';
+  const stats = [];
+  if (a.follower_count != null) stats.push('<b>' + fmt(a.follower_count) + '</b> 粉丝');
+  if (a.following_count != null) stats.push('<b>' + fmt(a.following_count) + '</b> 关注');
+  if (a.post_count != null) stats.push('<b>' + fmt(a.post_count) + '</b> 帖');
+  const statsHtml = stats.length ? '<span class="acct-stats">' + stats.join(' · ') + '</span>' : '';
+  const score = (showScore && a.score != null)
+    ? '<span class="acct-score">' + (a.score * 100).toFixed(0) + '%</span>' : '';
+  const email = a.email ? '<div class="acct-email" title="' + escapeHtml(a.email) + '">&#9993; ' + escapeHtml(a.email) + '</div>' : '';
+  const src = a.source ? '<span class="acct-src" title="来源">' + escapeHtml(a.source) + '</span>' : '';
+  const bio = a.biography ? '<span class="acct-bio" title="' + escapeHtml(a.biography) + '">' + escapeHtml(a.biography.replace(/\n/g, ' · ')) + '</span>' : '<span class="acct-bio" style="opacity:.6">（无简介）</span>';
+  return '<div class="acct-row" data-id="' + a.id + '">' + avatar +
+    '<div class="acct-main">' +
+      '<div class="acct-line1">' +
+        platformTag(a.platform) +
+        '<span class="acct-handle">@' + escapeHtml(a.username || '') + '</span>' + verified +
+        '<span class="acct-name">' + escapeHtml(a.full_name || '') + '</span>' + cat + score +
+        statsHtml +
+      '</div>' +
+      '<div class="acct-line2">' + bio + '</div>' +
+    '</div>' +
+    '<div class="acct-right">' + email + src + '</div>' +
+  '</div>';
 }
 
 async function loadList() {
   const seq = ++_listSeq;
   const {params, rerank} = dbParams(0);
   _dbOffset = 0; _dbCount = 0; _dbDone = false;
-  document.getElementById('dbList').innerHTML = '<div class="empty">加载中…</div>';
+  document.getElementById('dbList').innerHTML = skeletonList(8, {avatar:true});
   updateDbFooter();
   try {
     const r = await fetch('/api/db/list?' + params.toString());
@@ -119,7 +162,7 @@ async function loadList() {
     _dbDone = rerank || list.length < DB_BATCH;
     const showScore = !!params.get('description');
     document.getElementById('dbList').innerHTML = list.length
-      ? list.map(a => renderAccount(a, {showScore})).join('')
+      ? '<div class="acct-list">' + list.map(a => renderAccountRow(a, showScore)).join('') + '</div>'
       : '<div class="empty">数据库为空。去 Query 搜索或相似发现页面跑一次。</div>';
     bindDbRows();
     updateDbFooter();
@@ -143,8 +186,9 @@ async function loadMoreDb() {
     if (d.error) throw new Error(d.error);
     const list = d.accounts || [];
     if (!list.length) { _dbDone = true; return; }
-    document.getElementById('dbList').insertAdjacentHTML(
-      'beforeend', list.map(a => renderAccount(a, {showScore: false})).join(''));
+    // append inside the list wrapper so the border/rounding stays continuous
+    const wrap = document.querySelector('#dbList .acct-list') || document.getElementById('dbList');
+    wrap.insertAdjacentHTML('beforeend', list.map(a => renderAccountRow(a, false)).join(''));
     bindDbRows();
     _dbOffset += list.length;
     _dbCount += list.length;
@@ -165,7 +209,7 @@ function initDbScroll() {
   if ('IntersectionObserver' in window) {
     new IntersectionObserver(entries => {
       if (entries.some(e => e.isIntersecting)) loadMoreDb();
-    }, {rootMargin: '800px 0px'}).observe(el);
+    }, {rootMargin: '320px 0px'}).observe(el);
   } else {
     window.addEventListener('scroll', () => {
       if (el.getBoundingClientRect().top < window.innerHeight + 400) loadMoreDb();
@@ -256,15 +300,67 @@ async function embedMissing() {
   } catch (e) { document.getElementById('opStatus').textContent = '失败：' + e.message; }
 }
 
+// Export runs as a background job so the button can show a real percentage
+// instead of going silent for several seconds. The old flow was: click →
+// nothing happens → (maybe) a file appears.
 async function exportExcel() {
+  const btn = document.getElementById('exportBtn');
+  const box = document.getElementById('exportProgress');
+  const fill = document.getElementById('exportFill');
+  const label = document.getElementById('exportLabel');
+  btn.disabled = true;
+  const original = btn.innerHTML;
+  btn.textContent = '导出中…';
+  box.style.display = '';
+  fill.className = 'progress-fill indeterminate';
+  label.textContent = '正在准备数据…';
   try {
-    const r = await fetch('/api/db/export', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});
-    const blob = await r.blob();
-    const url = URL.createObjectURL(blob);
+    const start = await fetch('/api/db/export/start', {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}',
+    });
+    const {job_id} = await start.json();
+    if (!job_id) throw new Error('无法创建导出任务');
+
+    let job = null;
+    for (let i = 0; i < 1200; i++) {          // up to ~6 min at 300ms
+      await new Promise(r => setTimeout(r, 300));
+      const r = await fetch('/api/db/export/' + job_id);
+      job = await r.json();
+      if (job.error && job.status !== 'running') throw new Error(job.error);
+      if (job.status === 'running') {
+        if (job.total) {
+          fill.className = 'progress-fill';
+          fill.style.width = job.percent + '%';
+          label.textContent = '正在写入 ' + job.done.toLocaleString()
+            + ' / ' + job.total.toLocaleString() + ' 行（' + job.percent + '%）';
+        } else {
+          label.textContent = '正在读取账号…';
+        }
+        continue;
+      }
+      break;
+    }
+    if (!job || !job.ready) throw new Error(job && job.error ? job.error : '导出超时');
+    fill.className = 'progress-fill';
+    fill.style.width = '100%';
+    label.textContent = '完成：' + job.total.toLocaleString() + ' 行，开始下载…';
+    // trigger the download through a normal navigation so the browser shows
+    // its own download progress
     const a = document.createElement('a');
-    a.href = url; a.download = 'creators.xlsx'; a.click();
-    URL.revokeObjectURL(url);
-  } catch (e) { alert('导出失败：' + e.message); }
+    a.href = '/api/db/export/' + job_id + '/file';
+    a.download = 'creators.xlsx';
+    document.body.appendChild(a); a.click(); a.remove();
+    toast('导出完成，已开始下载', 'ok');
+    setTimeout(() => { box.style.display = 'none'; fill.style.width = '0'; }, 4000);
+  } catch (e) {
+    label.textContent = '导出失败：' + e.message;
+    fill.className = 'progress-fill';
+    fill.style.background = 'var(--red)';
+    toast('导出失败：' + e.message, 'err');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = original;
+  }
 }
 
 async function clearDb() {

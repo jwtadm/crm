@@ -4,67 +4,208 @@
 {% block content %}
 <div class="page-header">
   <h1><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-5px;margin-right:8px;color:var(--accent)"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/><path d="m9 12 2 2 4-4"/></svg><span>员工</span>管理</h1>
-  <p>激活/停用员工 · 重置密码 · 角色变更 · 客户分配迁移 · 审计日志</p>
+  <p>新增员工 · 激活/停用 · 重置密码 · 角色变更 · 客户分配迁移 · 审计日志</p>
 </div>
 
 <div class="card">
-  <div class="card-header"><h2>员工列表</h2>
-    <button class="btn btn-ghost btn-sm" id="refreshBtn" style="margin-left:auto;">刷新</button>
-    <button class="btn btn-ghost btn-sm" id="migrateBtn">迁移 owner 文本</button>
+  <div class="card-header">
+    <h2>员工列表</h2>
+    <span id="usersMeta" class="card-meta"></span>
+    <span style="margin-left:auto;"></span>
+    <button class="btn btn-accent btn-sm" id="newUserBtn">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6"/><path d="M22 11h-6"/></svg>
+      新增员工
+    </button>
+    <button class="btn btn-ghost btn-sm" id="refreshBtn">刷新</button>
+    <button class="btn btn-ghost btn-sm" id="migrateBtn" title="把历史 owner 文本迁移成 assigned_user_id（先干跑再确认）">迁移 owner 文本</button>
   </div>
   <div id="usersBox"></div>
 </div>
 
 <div class="card">
-  <div class="card-header"><h2>审计日志（最近 200 条）</h2>
+  <div class="card-header"><h2>审计日志</h2>
+    <span class="card-meta">最近 200 条</span>
     <button class="btn btn-ghost btn-sm" id="auditRefreshBtn" style="margin-left:auto;">刷新</button>
   </div>
-  <div id="auditBox" style="max-height:380px; overflow:auto;"></div>
+  <div id="auditBox" style="max-height:420px; overflow:auto;"></div>
+</div>
+
+<!-- 新增员工 -->
+<div id="newUserModal" class="modal-backdrop hidden">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="newUserTitle">
+    <div class="modal-head">
+      <h2 id="newUserTitle">新增员工</h2>
+      <button class="btn btn-ghost btn-sm" onclick="closeNewUser()">✕</button>
+    </div>
+    <div class="modal-body">
+      <p class="hint">系统会自动生成一次性临时密码，员工首次登录时会被强制修改。</p>
+      <div class="add-grid">
+        <label>用户名 *<input type="text" id="nuUsername" placeholder="如 echo.fan（登录用，不能有空格）" autocomplete="off"></label>
+        <label>显示名<input type="text" id="nuDisplay" placeholder="如 Echo Fan（不填则同用户名）"></label>
+        <label>邮箱<input type="text" id="nuEmail" placeholder="可选，用于通知"></label>
+        <label>角色
+          <select id="nuRole">
+            <option value="staff" selected>staff（只能看分配给自己的客户）</option>
+            <option value="admin">admin（全部权限）</option>
+          </select>
+        </label>
+      </div>
+      <div id="nuError" class="error-msg" style="display:none;"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost btn-sm" onclick="closeNewUser()">取消</button>
+      <span class="spacer"></span>
+      <button class="btn btn-accent" id="nuSubmitBtn" onclick="submitNewUser()">创建并生成密码</button>
+    </div>
+  </div>
+</div>
+
+<!-- 临时密码一次性展示 -->
+<div id="pwModal" class="modal-backdrop hidden">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="pwTitle">
+    <div class="modal-head">
+      <h2 id="pwTitle">临时密码</h2>
+      <button class="btn btn-ghost btn-sm" onclick="closePw()">✕</button>
+    </div>
+    <div class="modal-body">
+      <p class="hint" id="pwHint">只显示这一次。请复制后通过可靠渠道发给员工，登录后会被强制改密。</p>
+      <div class="copy-field">
+        <code id="pwValue"></code>
+        <button class="btn btn-ghost btn-sm" onclick="copyPw()">复制</button>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <span class="spacer"></span>
+      <button class="btn btn-accent btn-sm" onclick="closePw()">我已保存</button>
+    </div>
+  </div>
 </div>
 {% endblock %}
+
 {% block scripts %}
 <script>
 function fmtTime(ts) {
   if (!ts) return '—';
-  const d = new Date(ts * 1000);
-  return d.toLocaleString();
+  return new Date(ts * 1000).toLocaleString();
 }
 
+// ── 新增员工 ────────────────────────────────────────────────
+function openNewUser() {
+  ['nuUsername', 'nuDisplay', 'nuEmail'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('nuRole').value = 'staff';
+  document.getElementById('nuError').style.display = 'none';
+  document.getElementById('newUserModal').classList.remove('hidden');
+  document.getElementById('nuUsername').focus();
+}
+function closeNewUser() { document.getElementById('newUserModal').classList.add('hidden'); }
+
+async function submitNewUser() {
+  const btn = document.getElementById('nuSubmitBtn');
+  const errBox = document.getElementById('nuError');
+  const payload = {
+    username: document.getElementById('nuUsername').value.trim(),
+    display_name: document.getElementById('nuDisplay').value.trim(),
+    email: document.getElementById('nuEmail').value.trim(),
+    role: document.getElementById('nuRole').value,
+  };
+  if (!payload.username) {
+    errBox.textContent = '用户名必填';
+    errBox.style.display = '';
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = '创建中…';
+  try {
+    const r = await fetch('/api/admin/users', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || d.error || `HTTP ${r.status}`);
+    closeNewUser();
+    showPw(d.temp_password);
+    loadUsers();
+  } catch (e) {
+    errBox.textContent = e.message;
+    errBox.style.display = '';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '创建并生成密码';
+  }
+}
+
+function showPw(pw) {
+  document.getElementById('pwValue').textContent = pw;
+  document.getElementById('pwModal').classList.remove('hidden');
+}
+function closePw() { document.getElementById('pwModal').classList.add('hidden'); }
+async function copyPw() {
+  const txt = document.getElementById('pwValue').textContent;
+  try {
+    await navigator.clipboard.writeText(txt);
+    toast('临时密码已复制', 'ok');
+  } catch (e) {
+    // clipboard API needs a secure context; fall back to a selection
+    const rng = document.createRange();
+    rng.selectNodeContents(document.getElementById('pwValue'));
+    const sel = window.getSelection();
+    sel.removeAllRanges(); sel.addRange(rng);
+    toast('请按 Ctrl+C 复制', '');
+  }
+}
+
+// ── 员工列表 ────────────────────────────────────────────────
 async function loadUsers() {
+  const box = document.getElementById('usersBox');
+  box.innerHTML = skeletonTable(7, 6, [180,200,90,100,80,170,300]);
   const r = await fetch('/api/admin/users');
   const {users} = await r.json();
+  document.getElementById('usersMeta').textContent =
+    `${users.filter(u => u.is_active).length} 个激活 / 共 ${users.length} 个`;
   const rows = users.map(u => {
     const isAdmin = u.role === 'admin';
     return `<tr data-id="${u.id}">
-      <td>${escapeHtml(u.username)}</td>
-      <td>${escapeHtml(u.email || '')}</td>
-      <td>${escapeHtml(u.display_name || '')}</td>
+      <td>
+        <div class="cell-user">
+          <span class="cell-user-name">${escapeHtml(u.display_name || u.username)}</span>
+          <span class="cell-user-sub">@${escapeHtml(u.username)}</span>
+        </div>
+      </td>
+      <td class="cell-email">${escapeHtml(u.email || '—')}</td>
       <td><span class="role-badge role-${u.role}">${u.role}</span></td>
-      <td>${u.is_active ? '<span style="color:var(--green)">激活</span>' : '<span style="color:var(--text2)">未激活</span>'}</td>
-      <td style="text-align:right">${u.assigned_count}</td>
-      <td>${fmtTime(u.last_login_at)}</td>
-      <td style="white-space:nowrap;">
-        ${u.is_active
-          ? `<button class="btn btn-ghost btn-sm" data-act="deactivate">停用</button>`
-          : `<button class="btn btn-ghost btn-sm" data-act="activate">激活</button>`}
-        <button class="btn btn-ghost btn-sm" data-act="reset">重置密码</button>
-        <button class="btn btn-ghost btn-sm" data-act="role">${isAdmin ? '降为 staff' : '升为 admin'}</button>
-        <button class="btn btn-ghost btn-sm" data-act="delete">删除</button>
+      <td>${u.is_active
+        ? '<span class="pill pill-ok">激活</span>'
+        : '<span class="pill pill-muted">未激活</span>'}</td>
+      <td class="num">${u.assigned_count}</td>
+      <td class="cell-time">${fmtTime(u.last_login_at)}</td>
+      <td class="action-col">
+        <div class="row-actions">
+          ${u.is_active
+            ? `<button class="btn btn-ghost btn-xs" data-act="deactivate">停用</button>`
+            : `<button class="btn btn-ghost btn-xs" data-act="activate">激活</button>`}
+          <button class="btn btn-ghost btn-xs" data-act="reset">重置密码</button>
+          <button class="btn btn-ghost btn-xs" data-act="role">${isAdmin ? '降为 staff' : '升为 admin'}</button>
+          <button class="btn btn-ghost btn-xs btn-danger" data-act="delete">删除</button>
+        </div>
       </td>
     </tr>`;
   }).join('');
-  document.getElementById('usersBox').innerHTML = `
-    <table style="width:100%; font-size:12px; border-collapse:collapse;">
-      <thead><tr style="color:var(--text2); text-align:left;">
-        <th style="padding:6px 4px;">用户名</th><th>邮箱</th><th>显示名</th>
-        <th>角色</th><th>状态</th><th style="text-align:right;">客户数</th>
-        <th>最后登录</th><th>操作</th>
+  box.innerHTML = `
+    <div style="overflow-x:auto;">
+    <table class="crm-table">
+      <thead><tr>
+        <th style="min-width:180px;">员工</th>
+        <th style="min-width:200px;">邮箱</th>
+        <th style="width:90px;">角色</th>
+        <th style="width:100px;">状态</th>
+        <th class="num" style="width:80px;">客户数</th>
+        <th style="min-width:170px;">最后登录</th>
+        <th class="action-col" style="min-width:300px;">操作</th>
       </tr></thead>
       <tbody>${rows}</tbody>
-    </table>`;
-  document.querySelectorAll('#usersBox button[data-act]').forEach(b => {
-    b.onclick = () => onAct(b);
-  });
+    </table>
+    </div>`;
+  box.querySelectorAll('button[data-act]').forEach(b => { b.onclick = () => onAct(b); });
 }
 
 async function onAct(btn) {
@@ -73,6 +214,7 @@ async function onAct(btn) {
   const act = btn.getAttribute('data-act');
   if (act === 'activate') {
     await fetch(`/api/admin/users/${id}/activate`, {method: 'POST'});
+    toast('已激活', 'ok');
   } else if (act === 'deactivate') {
     const unassign = confirm('该员工名下的客户是否一起转回未分配池？\n（确定=转回未分配；取消=保留 owner 关系）');
     const r = await fetch(`/api/admin/users/${id}/deactivate`, {
@@ -80,46 +222,55 @@ async function onAct(btn) {
       body: JSON.stringify({unassign_customers: unassign}),
     });
     const data = await r.json();
-    if (!r.ok) { alert(data.error || '失败'); return; }
+    if (!r.ok) { toast(data.detail || data.error || '失败', 'err'); return; }
+    toast('已停用', 'ok');
   } else if (act === 'reset') {
     const r = await fetch(`/api/admin/users/${id}/reset_password`, {method: 'POST'});
     const data = await r.json();
-    if (!r.ok) { alert(data.error || '失败'); return; }
-    alert('临时密码（只显示一次）：\n\n' + data.temp_password + '\n\n请告知该员工，登录后会被强制改密。');
+    if (!r.ok) { toast(data.detail || data.error || '失败', 'err'); return; }
+    document.getElementById('pwHint').textContent =
+      '已重置。只显示这一次，请复制后发给员工；对方登录后会被强制改密。';
+    showPw(data.temp_password);
   } else if (act === 'role') {
     const cells = tr.querySelectorAll('td');
-    const isAdmin = cells[3].textContent.includes('admin');
+    const isAdmin = (cells[2] || {}).textContent && cells[2].textContent.includes('admin');
     const newRole = isAdmin ? 'staff' : 'admin';
     const r = await fetch(`/api/admin/users/${id}/role`, {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({role: newRole}),
     });
     const data = await r.json();
-    if (!r.ok) { alert(data.error || '失败'); return; }
+    if (!r.ok) { toast(data.detail || data.error || '失败', 'err'); return; }
+    toast(`已改为 ${newRole}`, 'ok');
   } else if (act === 'delete') {
-    if (!confirm('确定删除？只允许删除从未登录且无客户的账号。')) return;
+    if (!confirm('确定删除？只允许删除从未登录且无任何历史记录的账号。')) return;
     const r = await fetch(`/api/admin/users/${id}`, {method: 'DELETE'});
     const data = await r.json();
-    if (!r.ok) { alert(data.detail || data.error || '失败'); return; }
+    if (!r.ok) { toast(data.detail || data.error || '失败', 'err'); return; }
+    toast('已删除', 'ok');
   }
   loadUsers();
 }
 
 async function loadAudit() {
+  const box = document.getElementById('auditBox');
+  box.innerHTML = skeletonList(4, {avatar:false});
   const r = await fetch('/api/admin/audit');
   const {events} = await r.json();
-  document.getElementById('auditBox').innerHTML = events.map(e => {
-    const detail = e.detail ? ` <span style="color:var(--text2)">${escapeHtml(JSON.stringify(e.detail))}</span>` : '';
-    return `<div style="padding:6px 8px; border-bottom:1px solid var(--border); font-size:12px;">
-      <span style="color:var(--text2)">${fmtTime(e.created_at)}</span> ·
-      <b>${escapeHtml(e.actor_username || '?')}</b> ·
-      <span style="color:var(--accent)">${escapeHtml(e.action)}</span>
-      ${e.target ? '· <span style="color:var(--text2)">' + escapeHtml(e.target) + '</span>' : ''}
+  box.innerHTML = events.map(e => {
+    const detail = e.detail
+      ? ` <span style="color:var(--text-2)">${escapeHtml(JSON.stringify(e.detail))}</span>` : '';
+    return `<div class="audit-row">
+      <span class="audit-time">${fmtTime(e.created_at)}</span>
+      <b>${escapeHtml(e.actor_username || '?')}</b>
+      <span class="audit-action">${escapeHtml(e.action)}</span>
+      ${e.target ? `<span class="audit-target">${escapeHtml(e.target)}</span>` : ''}
       ${detail}
     </div>`;
   }).join('') || '<div class="empty">暂无审计记录</div>';
 }
 
+document.getElementById('newUserBtn').onclick = openNewUser;
 document.getElementById('refreshBtn').onclick = loadUsers;
 document.getElementById('auditRefreshBtn').onclick = loadAudit;
 document.getElementById('migrateBtn').onclick = async () => {
@@ -132,9 +283,15 @@ document.getElementById('migrateBtn').onclick = async () => {
     method: 'POST', headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({apply: true}),
   }).then(r => r.json());
-  alert(`已更新 ${r.would_update} 行。`);
+  toast(`已更新 ${r.would_update} 行`, 'ok');
   loadUsers();
 };
+
+// Enter 提交 / Esc 关闭
+document.getElementById('newUserModal').addEventListener('keydown', e => {
+  if (e.key === 'Enter') submitNewUser();
+  if (e.key === 'Escape') closeNewUser();
+});
 
 loadUsers();
 loadAudit();
