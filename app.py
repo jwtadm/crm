@@ -2,6 +2,7 @@
 
 Every UI action has a 1:1 backend API. See `tools/api_test.py` for the contract.
 """
+import io
 import json as _json_mod
 import os
 import secrets as _secrets
@@ -509,6 +510,9 @@ def api_people_match_ids():
     else:
         assigned_filter = u["id"]
         owner_param = ""
+    # Must match /api/people/list, otherwise "select all matching" silently
+    # drops rows the table is showing (e.g. the 不适合 rows when the toggle is on).
+    include_rejected = (args.get("include_rejected") or "").lower() in ("1", "true", "yes")
     with db.tx() as c:
         rows, total = db.list_people(
             c,
@@ -521,6 +525,7 @@ def api_people_match_ids():
             limit=100000,
             offset=0,
             assigned_user_id=assigned_filter,
+            include_rejected=include_rejected,
         )
     with_email = [{"id": r["id"], "email": r["email"], "full_name": r.get("full_name")} for r in rows if r.get("email")]
     return jsonify({"ids": [r["id"] for r in with_email], "total_matching": total,
@@ -2565,11 +2570,13 @@ def api_db_export():
         ws.column_dimensions[ws.cell(row=1, column=i + 1).column_letter].width = w
     ws.auto_filter.ref = ws.dimensions
     ws.freeze_panes = "A2"
-    tmp = tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False)
-    wb.save(tmp.name)
-    tmp.close()
+    # Write into memory: the previous NamedTemporaryFile(delete=False) was
+    # never unlinked, so every export leaked a full xlsx on disk.
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
     return send_file(
-        tmp.name, as_attachment=True, download_name="creators.xlsx",
+        buf, as_attachment=True, download_name="creators.xlsx",
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
