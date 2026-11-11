@@ -170,6 +170,7 @@ async function loadList() {
       : '<div class="empty">数据库为空。去 Query 搜索或相似发现页面跑一次。</div>';
     bindDbRows();
     updateDbFooter();
+    maybeFillDb();
   } catch (e) {
     if (seq !== _listSeq) return;   // aborted or superseded — don't clobber the UI
     document.getElementById('dbList').innerHTML = `<div class="error-msg">${escapeHtml(e.message)}</div>`;
@@ -203,7 +204,18 @@ async function loadMoreDb() {
   } finally {
     _dbLoading = false;
     updateDbFooter();
+    maybeFillDb();
   }
+}
+
+// Same reason as the similarity page: the observer only fires on a *change*,
+// so a sentinel that was already in the prefetch margin when the first batch
+// arrived never triggers again. Top up until it is below the fold.
+function maybeFillDb() {
+  if (_dbLoading || _dbDone) return;
+  const el = document.getElementById('dbMore');
+  if (!el || el.style.display === 'none') return;
+  if (el.getBoundingClientRect().top <= window.innerHeight + 320) loadMoreDb();
 }
 
 function initDbScroll() {

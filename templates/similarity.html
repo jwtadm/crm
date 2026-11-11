@@ -182,6 +182,7 @@ async function loadList() {
     _simDone = rerank || allAccounts.length < SIM_BATCH;
     renderList();
     updateSimFooter();
+    maybeFillSim();
   } catch (e) {
     if (seq !== _listSeq) return;   // aborted or superseded — don't clobber the UI
     document.getElementById('dbList').innerHTML = `<div class="error-msg">${escapeHtml(e.message)}</div>`;
@@ -214,7 +215,19 @@ async function loadMoreSim() {
   } finally {
     _simLoading = false;
     updateSimFooter();
+    maybeFillSim();
   }
+}
+
+// IntersectionObserver only reports *changes*. If the sentinel was already
+// inside the prefetch margin while the first batch was still loading (or the
+// batch is too short to push it down), no further event ever arrives and the
+// list looks stuck. Top up until the sentinel is genuinely below the fold.
+function maybeFillSim() {
+  if (_simLoading || _simDone) return;
+  const el = document.getElementById('simMore');
+  if (!el || el.style.display === 'none') return;
+  if (el.getBoundingClientRect().top <= window.innerHeight + 320) loadMoreSim();
 }
 
 function initSimScroll() {

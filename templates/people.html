@@ -399,6 +399,17 @@ function updateMeta() {
     el.textContent = `已加载 ${_offset.toLocaleString()} / 共 ${_total.toLocaleString()} 人`;
   }
   updateSentinel();
+  maybeFillList();
+}
+
+// The observer only fires when the sentinel *enters* the margin. If it was
+// already inside while the first batch was loading, nothing re-triggers it and
+// the list looks stuck — top up until it is actually below the fold.
+function maybeFillList() {
+  if (_loadingMore || _offset <= 0 || _offset >= _total) return;
+  const el = document.getElementById('loadMoreSentinel');
+  if (!el || el.style.display === 'none') return;
+  if (el.getBoundingClientRect().top <= window.innerHeight + 320) loadMore();
 }
 
 // ── Scroll pagination ──────────────────────────────────────────────────────

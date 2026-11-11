@@ -1156,8 +1156,10 @@ select:disabled {
 }
 
 .list {
-  max-height: 480px;
-  overflow-y: auto;
+  /* No max-height: the list grows with the page so the infinite-scroll
+     sentinel below it can actually be reached. A 480px inner scroller put the
+     sentinel outside the box — scrolling inside the box never triggered
+     "load more" and the list looked stuck at 20 rows. */
   border: 1px solid var(--border);
   border-radius: var(--r);
   padding: 4px;
