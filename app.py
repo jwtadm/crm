@@ -1678,6 +1678,9 @@ def api_db_list():
         description=str      embed + cosine sort all matched rows
         platforms=ig,tiktok  CSV
         limit=int            default 200
+        offset=int           for scroll pagination (ignored when `description`
+                             is set: the rerank re-sorts the batch in Python,
+                             so offset paging would slice a different ranking)
     """
     text = (request.args.get("text") or "").strip()
     description = (request.args.get("description") or "").strip()
@@ -1686,6 +1689,7 @@ def api_db_list():
     statuses_raw = request.args.get("statuses") or ""
     statuses = [s for s in statuses_raw.split(",") if s] or None
     limit = int(request.args.get("limit") or 200)
+    offset = 0 if description else int(request.args.get("offset") or 0)
 
     # Only load heavy columns (raw JSON + embeddings) when description rerank needs them
     need_embeddings = bool(description)
@@ -1693,7 +1697,7 @@ def api_db_list():
     with db.ro() as c:
         rows = db.list_accounts(c, platforms=platforms, text=text,
                                 limit=limit, statuses=statuses,
-                                include_heavy=need_embeddings)
+                                include_heavy=need_embeddings, offset=offset)
         accounts = [db.row_to_dict(r) for r in rows]
         id_to_emb = {}
         if need_embeddings:

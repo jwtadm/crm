@@ -670,6 +670,7 @@ def list_accounts(
     limit: int = 200,
     statuses: list[str] | None = None,
     include_heavy: bool = False,
+    offset: int = 0,
 ) -> list[sqlite3.Row]:
     """List platform_accounts, optionally filtered by their owner-person's
     `people.status`. The status filter joins through people; `statuses=['已成交']`
@@ -683,10 +684,10 @@ def list_accounts(
            "*" if include_heavy else \
            f"pa.{_ACCOUNT_LIGHT_COLS}" if statuses else _ACCOUNT_LIGHT_COLS
     if statuses:
-        sql = f"SELECT {cols} FROM platform_accounts pa JOIN people p ON p.id = pa.person_id"
+        from_clause = "platform_accounts pa JOIN people p ON p.id = pa.person_id"
         col = lambda name: f"pa.{name}"
     else:
-        sql = f"SELECT {cols} FROM platform_accounts"
+        from_clause = "platform_accounts"
         col = lambda name: name
     where = []
     args: list = []
@@ -701,12 +702,16 @@ def list_accounts(
     if statuses:
         where.append(f"p.status IN ({','.join(['?']*len(statuses))})")
         args.extend(statuses)
-    if where:
-        sql += " WHERE " + " AND ".join(where)
-    sql += (f" ORDER BY {col('follower_count')} DESC, "
-            f"{col('updated_at')} DESC LIMIT ?")
-    args.append(limit)
-    return c.execute(sql, args).fetchall()
+    where_sql = (" WHERE " + " AND ".join(where)) if where else ""
+    # id is the final sort key so `LIMIT/OFFSET` paging is stable — without a
+    # unique tie-break two rows with equal follower_count+updated_at can swap
+    # between pages and one of them never gets shown.
+    return c.execute(
+        f"SELECT {cols} FROM {from_clause}{where_sql} "
+        f"ORDER BY {col('follower_count')} DESC, {col('updated_at')} DESC, "
+        f"{col('id')} DESC LIMIT ? OFFSET ?",
+        [*args, limit, offset],
+    ).fetchall()
 
 
 # Exactly the columns the xlsx export writes.

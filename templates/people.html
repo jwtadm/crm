@@ -107,10 +107,17 @@
     <select id="bulkAssignSel" class="admin-only hidden" disabled style="padding:5px 8px; font-size:12px; background:var(--surface2); border:1px solid var(--border); border-radius:6px; color:var(--text);"></select>
     <button class="btn btn-ghost btn-sm admin-only hidden" id="bulkAssignBtn" disabled onclick="bulkAssign()">批量分配</button>
     <span style="margin-left:auto;"></span>
-    <button class="btn btn-ghost btn-sm" onclick="prevPage()" id="prevBtn">← 上一页</button>
-    <button class="btn btn-ghost btn-sm" onclick="nextPage()" id="nextBtn">下一页 →</button>
+    <label class="filter-label" title="滚动到底部会自动继续加载；这里可一次跳到指定数量">
+      每批
+      <select id="pageSizeSel" onchange="reloadFiltered()">
+        <option value="100" selected>100</option>
+        <option value="200">200</option>
+        <option value="500">500</option>
+      </select>
+    </label>
   </div>
   <div id="tableWrap" style="margin-top: 12px;"><div class="empty">加载中…</div></div>
+  <div id="loadMoreSentinel" class="load-more" style="display:none;"></div>
 </div>
 
 <!-- Add-customer modal -->
@@ -150,12 +157,6 @@
   </div>
 </div>
 
-<style>
-.add-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.add-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text2); }
-.add-grid input, .add-grid select, .add-grid textarea { width: 100%; }
-@media (max-width: 600px) { .add-grid { grid-template-columns: 1fr; } }
-</style>
 
 {% raw %}
 <!-- Compose modal (two-column: editor on the left, live preview on the right) -->
@@ -232,73 +233,6 @@
   <div id="handlesDrawerBody"></div>
 </div>
 
-<style>
-.crm-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-.crm-table th { text-align: left; padding: 8px 10px; color: var(--text2); font-weight: 500; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--surface); z-index: 1; }
-.crm-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
-.crm-table tr:hover td { background: var(--surface2); }
-
-/* 「操作」列 sticky 在右边，横滚时永远跟着你（不用滑到最右才能点「不适合」）。
-   要给它一个不透明背景 + z-index + 左侧细边/阴影，否则会跟邻列叠在一起。 */
-.crm-table th.action-col,
-.crm-table td.action-col {
-  position: sticky;
-  right: 0;
-  background: var(--surface);
-  z-index: 2;
-  box-shadow: -6px 0 12px -6px rgba(0,0,0,.15);
-  border-left: 1px solid var(--border);
-}
-.crm-table tr:hover td.action-col { background: var(--surface2); }
-/* row 高亮（拒绝行）时也跟着变 */
-.crm-table tr[style*="--red-dim"] td.action-col { background: var(--red-dim); }
-.crm-table .name { font-weight: 600; color: var(--text); }
-.crm-table .email { color: var(--text2); font-family: 'SF Mono', monospace; font-size: 11px; }
-.crm-table .handles { display: flex; flex-wrap: wrap; gap: 3px; }
-.crm-table .handle-chip { font-size: 10px; padding: 1px 6px; border-radius: 8px; background: var(--surface2); color: var(--text2); }
-.crm-table .handle-chip.instagram { background: var(--pink-dim); color: var(--pink); }
-.crm-table .handle-chip.x { background: var(--blue-dim); color: var(--blue); }
-.crm-table .handle-chip.tiktok { background: var(--accent-dim); color: var(--accent); }
-.crm-table .btn-handles { font-size: 11px; padding: 2px 8px; border-radius: 6px; background: transparent; color: var(--text2); border: 1px dashed var(--border); cursor: pointer; }
-.crm-table .btn-handles:hover { border-color: var(--accent); color: var(--accent); }
-#handlesDrawer { position: fixed; top: 0; right: 0; bottom: 0; width: 440px; background: var(--surface); border-left: 1px solid var(--border); padding: 20px; overflow-y: auto; z-index: 200; box-shadow: -4px 0 12px rgba(0,0,0,.3); }
-#handlesDrawer .h-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: var(--surface2); border-radius: 8px; margin-bottom: 6px; font-size: 12px; }
-#handlesDrawer .h-row .ph { font-size: 10px; font-weight: 600; text-transform: uppercase; padding: 1px 6px; border-radius: 6px; }
-#handlesDrawer .h-row .ph.instagram { background: var(--pink-dim); color: var(--pink); }
-#handlesDrawer .h-row .ph.x { background: var(--blue-dim); color: var(--blue); }
-#handlesDrawer .h-row .ph.tiktok { background: var(--accent-dim); color: var(--accent); }
-#handlesDrawer .h-row .uname { flex: 1; font-family: 'SF Mono', monospace; }
-#handlesDrawer .h-row .meta { font-size: 10px; color: var(--text2); }
-#handlesDrawer .h-row .placeholder { color: var(--orange); font-size: 10px; }
-#handlesDrawer .h-row .x-del { padding: 2px 8px; font-size: 11px; background: transparent; color: var(--text2); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
-#handlesDrawer .h-row .x-del:hover { border-color: var(--red); color: var(--red); }
-#handlesDrawer .add-box { background: var(--surface2); border-radius: 8px; padding: 12px; margin-top: 14px; }
-#handlesDrawer .add-box select, #handlesDrawer .add-box input[type=text] { padding: 6px 10px; font-size: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; color: var(--text); }
-#handlesDrawer .add-box label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text2); }
-.filter-label { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text2); white-space: nowrap; }
-.filter-label select { padding: 5px 8px; font-size: 12px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); }
-.filter-label select:focus { outline: none; border-color: var(--accent); }
-.crm-table input, .crm-table select { padding: 3px 6px; font-size: 11px; background: var(--surface2); border: 1px solid var(--border); border-radius: 5px; color: var(--text); width: 100%; }
-.crm-table .name-input { font-weight: 600; color: var(--text); }
-.crm-table .notes-input { color: var(--text2); }
-.crm-table .email-input { font-family: 'SF Mono', monospace; font-size: 11px; color: var(--text2); }
-.crm-table .name-display { display: inline-block; font-weight: 600; color: var(--text); padding: 4px 6px; border-radius: 5px; cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: text; }
-.crm-table .email-display { display: inline-block; font-family: 'SF Mono', monospace; font-size: 11px; color: var(--text2); padding: 4px 6px; border-radius: 5px; cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: text; }
-.crm-table .name-display:hover, .crm-table .email-display:hover { background: var(--surface2); }
-.crm-table .placeholder-txt { color: var(--text2); opacity: .55; font-weight: 400; }
-.crm-table input.dirty, .crm-table select.dirty { border-color: var(--orange); }
-.crm-table .relative-time { color: var(--text2); white-space: nowrap; }
-.crm-table .never { color: var(--text2); opacity: .5; }
-.crm-table .btn-contact { padding: 3px 9px; font-size: 11px; background: var(--green-dim); color: var(--green); border: 1px solid transparent; border-radius: 6px; cursor: pointer; text-decoration: none; }
-.crm-table .btn-contact:hover { border-color: var(--green); }
-.crm-table .btn-hydrate { padding: 3px 7px; font-size: 11px; background: var(--blue-dim); color: var(--blue); border: 1px solid transparent; border-radius: 6px; cursor: pointer; }
-.crm-table .btn-hydrate:hover:not(:disabled) { border-color: var(--blue); }
-.crm-table .btn-hydrate:disabled { opacity: .6; cursor: wait; }
-@keyframes spin360 { to { transform: rotate(360deg); } }
-.crm-table .btn-hydrate.spinning { animation: spin360 .8s linear infinite; display: inline-block; }
-.notes-cell { max-width: 200px; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.notes-cell:hover { white-space: normal; overflow: visible; }
-</style>
 
 {% endblock %}
 
@@ -324,19 +258,42 @@ function intentOptionsHtml(current) {
     `<option value="${v}" ${v === cur ? 'selected' : ''}>${v}</option>`
   ).join('');
 }
-const PAGE_SIZE = 100;
+const PAGE_SIZE_DEFAULT = 100;
+function pageSize() {
+  const el = document.getElementById('pageSizeSel');
+  return el ? (parseInt(el.value, 10) || PAGE_SIZE_DEFAULT) : PAGE_SIZE_DEFAULT;
+}
 let _t = null;
-let _offset = 0;
+let _offset = 0;          // rows currently loaded (== next fetch offset)
+let _loadingMore = false;
 
 // Filter changes (status, platform, email, order, assignee, include-rejected,
-// search text) should always jump back to page 1 — staying on a deep page
-// while the filter narrows the result set leads to "1701-61 / 共 61 人 · 没有
-// 匹配的客户" empty views (caught 2026-06-03 when 待联系 → 已联系 left the
-// offset at 1700 against a 61-person result).
+// search text) should always reset the list — keeping a deep offset while the
+// filter narrows the result set leads to "1701-61 / 共 61 人 · 没有匹配的客户"
+// empty views (caught 2026-06-03 when 待联系 → 已联系 left the offset at 1700
+// against a 61-person result).
 function reloadFiltered() { _offset = 0; loadList(); }
 let _total = 0;
 
 function debouncedLoad() { clearTimeout(_t); _t = setTimeout(() => { _offset = 0; loadList(); }, 300); }
+
+// One place builds the query string so the first page and the scroll-driven
+// pages can never disagree about the active filters.
+function listParams(offset) {
+  const params = new URLSearchParams({
+    q: document.getElementById('qInput').value.trim(),
+    status: document.getElementById('statusSel').value,
+    has_platform: document.getElementById('platSel').value,
+    has_email: document.getElementById('emailSel').value,
+    order: document.getElementById('orderSel').value,
+    limit: pageSize(),
+    offset,
+  });
+  const assignSel = document.getElementById('assignSel');
+  if (assignSel && assignSel.value) params.set('assigned_user_id', assignSel.value);
+  if (document.getElementById('includeRejected')?.checked) params.set('include_rejected', '1');
+  return params;
+}
 
 function relTime(ts) {
   if (!ts) return '<span class="never">从未</span>';
@@ -378,18 +335,8 @@ let _listSeq = 0;
 
 async function loadList() {
   const seq = ++_listSeq;
-  const q = document.getElementById('qInput').value.trim();
-  const status = document.getElementById('statusSel').value;
-  const has_platform = document.getElementById('platSel').value;
-  const has_email = document.getElementById('emailSel').value;
-  const order = document.getElementById('orderSel').value;
-  const params = new URLSearchParams({
-    q, status, has_platform, has_email, order,
-    limit: PAGE_SIZE, offset: _offset,
-  });
-  const assignSel = document.getElementById('assignSel');
-  if (assignSel && assignSel.value) params.set('assigned_user_id', assignSel.value);
-  if (document.getElementById('includeRejected')?.checked) params.set('include_rejected', '1');
+  const params = listParams(0);
+  _offset = 0;
 
   // Snapshot the focus/scroll BEFORE rebuilding the table.
   const wrap = document.getElementById('tableWrap');
@@ -403,7 +350,9 @@ async function loadList() {
     if (seq !== _listSeq) return;   // superseded by a newer request
     if (d.error) throw new Error(d.error);
     _total = d.total || 0;
-    renderTable(d.people || []);
+    const rows = d.people || [];
+    _offset = rows.length;
+    renderTable(rows);
     updateMeta();
     // Restore scroll + active row visibility.
     requestAnimationFrame(() => {
@@ -432,15 +381,81 @@ async function loadList() {
 }
 
 function updateMeta() {
-  const start = _total ? _offset + 1 : 0;
-  const end = Math.min(_offset + PAGE_SIZE, _total);
-  document.getElementById('resultMeta').textContent = `${start}-${end} / 共 ${_total.toLocaleString()} 人`;
-  document.getElementById('prevBtn').disabled = _offset <= 0;
-  document.getElementById('nextBtn').disabled = end >= _total;
+  const el = document.getElementById('resultMeta');
+  if (!_total) {
+    el.textContent = '共 0 人';
+  } else if (_offset >= _total) {
+    el.textContent = `共 ${_total.toLocaleString()} 人（已全部加载）`;
+  } else {
+    el.textContent = `已加载 ${_offset.toLocaleString()} / 共 ${_total.toLocaleString()} 人`;
+  }
+  updateSentinel();
 }
 
-function prevPage() { _offset = Math.max(0, _offset - PAGE_SIZE); loadList(); }
-function nextPage() { _offset += PAGE_SIZE; loadList(); }
+// ── Scroll pagination ──────────────────────────────────────────────────────
+// Replaces the old 上一页/下一页 buttons: scrolling toward the bottom appends
+// the next batch. Bigger win than it looks — the first paint only transfers
+// PAGE_SIZE rows instead of waiting on a page worth of aggregates, and the
+// user no longer has to guess which page holds what they want.
+function updateSentinel() {
+  const el = document.getElementById('loadMoreSentinel');
+  if (!el) return;
+  if (!_total || _offset >= _total) { el.style.display = 'none'; return; }
+  el.style.display = '';
+  el.textContent = _loadingMore
+    ? '加载中…'
+    : `继续向下滚动加载更多（还剩 ${(_total - _offset).toLocaleString()} 人）`;
+}
+
+async function loadMore() {
+  if (_loadingMore || _offset <= 0 || _offset >= _total) return;
+  const seq = _listSeq;               // filters must not change under us
+  _loadingMore = true;
+  updateSentinel();
+  try {
+    const r = await fetch('/api/people/list?' + listParams(_offset).toString());
+    const d = await r.json();
+    if (seq !== _listSeq) return;     // a filter/search reset happened meanwhile
+    if (d.error) throw new Error(d.error);
+    const rows = d.people || [];
+    if (!rows.length) { _offset = _total; return; }   // nothing left; stop asking
+    appendRows(rows);
+    _offset += rows.length;
+  } catch (e) {
+    const el = document.getElementById('loadMoreSentinel');
+    if (el && seq === _listSeq) el.textContent = `加载失败：${e.message}（点击重试）`;
+  } finally {
+    _loadingMore = false;
+    updateMeta();
+  }
+}
+
+function appendRows(people) {
+  const tb = document.querySelector('#tableWrap table.crm-table tbody');
+  if (!tb) { renderTable(people); return; }          // table vanished → full repaint
+  tb.insertAdjacentHTML('beforeend', people.map(p => renderRow(p)).join(''));
+  document.querySelectorAll('.row-cb').forEach(cb => {
+    cb.checked = _selected.has(+cb.dataset.pid);
+  });
+}
+
+function initScrollPagination() {
+  const el = document.getElementById('loadMoreSentinel');
+  if (!el) return;
+  el.addEventListener('click', () => loadMore());
+  if ('IntersectionObserver' in window) {
+    // rootMargin prefetches before the row is actually on screen, so the next
+    // batch is usually already there by the time you reach the bottom.
+    new IntersectionObserver(entries => {
+      if (entries.some(e => e.isIntersecting)) loadMore();
+    }, {rootMargin: '800px 0px'}).observe(el);
+  } else {
+    window.addEventListener('scroll', () => {
+      const r = el.getBoundingClientRect();
+      if (r.top < window.innerHeight + 400) loadMore();
+    }, {passive: true});
+  }
+}
 
 const _selected = new Set();
 
@@ -589,7 +604,7 @@ function renderRow(p) {
     ownerCell = `<span style="font-size:11px;color:var(--text2);">${escapeHtml(p.assigned_display_name || p.assigned_username || '—')}</span>`;
   }
   const rejectedRowStyle = isRejected
-    ? ' style="background: var(--red-dim);"'
+    ? ' style="background: var(--red-light);"'
     : '';
   return `
     <tr data-pid="${p.id}"${rejectedRowStyle}>
@@ -1668,6 +1683,7 @@ async function bootstrapStaff() {
     } catch (e) {}
   }
   loadList();
+  initScrollPagination();
 }
 bootstrapStaff();
 

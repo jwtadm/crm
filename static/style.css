@@ -45,6 +45,26 @@
 
   --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   --mono: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+
+  /* ── Legacy token aliases ──────────────────────────────────────
+     Seven templates were written against an older naming scheme
+     (--text2 / --surface2 / --*-dim) that this stylesheet never defined.
+     Because an undefined var() makes the whole declaration invalid, ~136
+     declarations were silently dropped: table rows had no hover highlight,
+     handle chips had no background, the 联系/补全 buttons had no fill, and
+     secondary text was not de-emphasised. Aliased here so both spellings
+     work; new code should use the hyphenated names above. */
+  --text2: var(--text-2);
+  --text3: var(--text-3);
+  --surface2: var(--surface-2);
+  --surface3: var(--surface-3);
+  --accent-dim: var(--accent-light);
+  --pink-dim: var(--pink-light);
+  --blue-dim: var(--blue-light);
+  --green-dim: var(--green-light);
+  --orange-dim: var(--orange-light);
+  --red-dim: var(--red-light);
+  --purple-dim: var(--purple-light);
 }
 
 /* ─── Reset ─────────────────────────────────────────────────── */
@@ -401,6 +421,26 @@ select:disabled {
 
 /* ─── CRM Table ─────────────────────────────────────────────── */
 
+/* Scroll-paginated list footer: doubles as the IntersectionObserver target
+   (auto-loads the next batch) and as a click-to-load fallback. */
+.load-more {
+  margin: 14px 0 6px;
+  padding: 12px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-3);
+  background: var(--surface);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--r);
+  cursor: pointer;
+  transition: border-color .15s, color .15s, background .15s;
+}
+.load-more:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-light);
+}
+
 .crm-table {
   width: 100%;
   border-collapse: separate;
@@ -437,7 +477,6 @@ select:disabled {
 .crm-table tr:last-child td {
   border-bottom: none;
 }
-
 .crm-table th.action-col,
 .crm-table td.action-col {
   position: sticky;
@@ -608,6 +647,121 @@ select:disabled {
   white-space: normal;
   overflow: visible;
 }
+
+/* Rejected rows paint their <tr> with a light red; the sticky action cell has
+   its own opaque background, so it has to be told to match. */
+.crm-table tr[style*="--red-light"] td.action-col,
+.crm-table tr[style*="--red-dim"] td.action-col { background: var(--red-light); }
+
+/* ─── People page: inline cell editors ──────────────────────── */
+
+/* These three live inside the table cells and carry semantics the generic
+   .crm-table input rule does not (bold name, muted notes, mono email). */
+.crm-table .name-input { font-weight: 600; color: var(--text); }
+.crm-table .notes-input { color: var(--text-2); }
+.crm-table .email-input { font-family: var(--mono); font-size: 11px; color: var(--text-2); }
+
+/* ─── People page: handles drawer ───────────────────────────── */
+
+#handlesDrawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(460px, 94vw);
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  padding: 20px;
+  overflow-y: auto;
+  z-index: 200;
+  box-shadow: var(--shadow-lg);
+}
+
+#handlesDrawer .h-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+
+#handlesDrawer .h-row .ph {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  padding: 1px 6px;
+  border-radius: var(--r-sm);
+}
+
+#handlesDrawer .h-row .ph.instagram { background: var(--pink-light); color: var(--pink); }
+#handlesDrawer .h-row .ph.x { background: var(--blue-light); color: var(--blue); }
+#handlesDrawer .h-row .ph.tiktok { background: var(--accent-light); color: var(--accent); }
+
+#handlesDrawer .h-row .uname { flex: 1; font-family: var(--mono); }
+#handlesDrawer .h-row .meta { font-size: 10px; color: var(--text-3); }
+#handlesDrawer .h-row .placeholder { color: var(--orange); font-size: 10px; }
+
+#handlesDrawer .h-row .x-del {
+  padding: 3px 9px;
+  font-size: 11px;
+  background: transparent;
+  color: var(--text-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: all .15s;
+}
+
+#handlesDrawer .h-row .x-del:hover {
+  border-color: var(--red);
+  color: var(--red);
+  background: var(--red-light);
+}
+
+#handlesDrawer .add-box {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 14px;
+  margin-top: 14px;
+}
+
+#handlesDrawer .add-box select,
+#handlesDrawer .add-box input[type=text] {
+  padding: 6px 10px;
+  font-size: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  color: var(--text);
+}
+
+#handlesDrawer .add-box label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+/* ─── People page: add-customer form grid ───────────────────── */
+
+.add-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.add-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-2);
+}
+.add-grid input, .add-grid select, .add-grid textarea { width: 100%; }
+@media (max-width: 600px) { .add-grid { grid-template-columns: 1fr; } }
 
 /* ─── Tags ──────────────────────────────────────────────────── */
 
