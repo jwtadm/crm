@@ -691,9 +691,16 @@ function renderFollowupCell(p) {
   const n = p.followup_count || 0;
   if (!n) {
     // 已经接触/回复过的客户没有跟进记录，要显眼地提示，而不是一个灰破折号。
+    // 点一下直接在行下面展开输入框，不用再开详情抽屉。
     const shouldHave = ['已联系', '已回复', '已成交', '主动来找'].includes(p.status);
     return shouldHave
-      ? '<span class="fu-none" title="这个客户已经进入沟通阶段，但还没有任何跟进记录">未跟进</span>'
+      ? `<div class="fu-cell" onclick="toggleFollowups(${p.id}, this.querySelector('.fu-head'))"
+              title="点一下直接记一条跟进">
+           <div class="fu-head">
+             <span class="fu-none">未跟进</span>
+             <span class="fu-caret">▾</span>
+           </div>
+         </div>`
       : '<span class="never">—</span>';
   }
   const snippet = (p.last_followup_content || '').trim();
@@ -723,6 +730,12 @@ async function toggleFollowups(pid, btn) {
     _fuItemsByPid.delete(pid);
     return;
   }
+  await openFollowupPanel(pid, btn);
+}
+
+// 打开（或刷新）某个客户的行下跟进面板。toggle 和"添加后重新展开"共用。
+async function openFollowupPanel(pid, btn) {
+  if (document.getElementById(`fuRow-${pid}`)) return;
   const tr = btn.closest('tr');
   if (!tr) return;
   btn.classList.add('is-open');
@@ -749,17 +762,20 @@ function renderExpandedFollowups(pid) {
   if (!detail) return;
   const all = _fuItemsByPid.get(pid) || [];
   const box = detail.querySelector('.fu-detail');
-  if (!all.length) {
-    box.innerHTML = `<div class="fu-detail-head">跟进记录</div>
-      <div class="empty" style="padding:10px 0; color:var(--text2);">还没有跟进记录</div>`;
-    return;
-  }
-  let searchEl = box.querySelector('.fu-search');
-  let sortEl = box.querySelector('.fu-sort');
-  if (!searchEl) {
+
+  // First render: header + quick composer (+ search/sort when there is history).
+  if (!box.querySelector('.fu-compose')) {
     box.innerHTML = `
-      <div class="fu-detail-head">全部跟进 <span class="fu-count">${all.length} 条</span>
-        <span class="fu-detail-hint">再点上面的时间收起</span></div>
+      <div class="fu-detail-head">${all.length
+        ? `全部跟进 <span class="fu-count">${all.length} 条</span>`
+        : '跟进记录'}</div>
+      <div class="fu-compose">
+        <input type="text" class="fu-compose-input" placeholder="记一条跟进：例 11 月 12 日电话沟通…"
+               onkeydown="if(event.key==='Enter') addFollowupInline(${pid}, this)">
+        <button type="button" class="btn btn-accent btn-sm"
+                onclick="addFollowupInline(${pid}, this)">＋ 添加</button>
+      </div>
+      ${all.length ? `
       <div class="fu-toolbar">
         <input type="text" class="fu-search" placeholder="搜索跟进内容 / 记录人 / 日期"
                oninput="renderExpandedFollowups(${pid})">
@@ -767,11 +783,20 @@ function renderExpandedFollowups(pid) {
           <option value="desc"${_fuSortPref === 'desc' ? ' selected' : ''}>时间 新→旧</option>
           <option value="asc"${_fuSortPref === 'asc' ? ' selected' : ''}>时间 旧→新</option>
         </select>
-      </div>
-      <div class="fu-timeline fu-items"></div>`;
-    searchEl = box.querySelector('.fu-search');
-    sortEl = box.querySelector('.fu-sort');
+      </div>` : ''}
+      <div class="fu-timeline fu-items">${all.length ? ''
+        : '<div class="empty" style="padding:8px 0; color:var(--text2);">还没有跟进记录，先记一条吧</div>'}</div>`;
+    if (!all.length) {
+      // 点「未跟进」进来的，直接给光标，敲完回车就保存。
+      const input = box.querySelector('.fu-compose-input');
+      if (input) input.focus();
+      return;
+    }
   }
+  if (!all.length) return;
+
+  const searchEl = box.querySelector('.fu-search');
+  const sortEl = box.querySelector('.fu-sort');
   _fuSortPref = sortEl.value;
   const shown = filterAndSortFollowups(all, searchEl.value, _fuSortPref);
   const cnt = box.querySelector('.fu-count');
@@ -782,6 +807,35 @@ function renderExpandedFollowups(pid) {
   box.querySelector('.fu-items').innerHTML = shown.length
     ? followupTimelineHtml(shown, false)
     : '<div class="empty" style="padding:8px 0; color:var(--text2);">没有匹配的跟进记录</div>';
+}
+
+// 行下快速添加：保存后刷新表格（跟进格子/排序会变），并重新展开看到新记录。
+async function addFollowupInline(pid, el) {
+  const wrap = el.closest('.fu-compose');
+  if (!wrap) return;
+  const input = wrap.querySelector('.fu-compose-input');
+  const btn = wrap.querySelector('button');
+  const content = (input.value || '').trim();
+  if (!content) { input.focus(); return; }
+  setBusy(btn, true);
+  try {
+    const r = await fetch(`/api/people/${pid}/followups`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({content}),
+    });
+    if (!r.ok) {
+      const d = await r.json();
+      alert('添加失败：' + (d.detail || d.error || ''));
+      return;
+    }
+    input.value = '';
+    rememberActiveRow(pid);
+    await loadList();
+    const head = document.querySelector(`tr[data-pid="${pid}"] .fu-head`);
+    if (head) await openFollowupPanel(pid, head);
+  } finally {
+    setBusy(btn, false);
+  }
 }
 
 async function onReject(pid) {
