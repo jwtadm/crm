@@ -4,7 +4,7 @@
 {% block content %}
 <div class="page-header">
   <h1><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-5px;margin-right:8px;color:var(--accent)"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>客户 <span>管理</span></h1>
-  <p>按"人"为单位的总览。状态/标签/负责人可就地编辑；点 ✉ 联系会同时打开邮件客户端 + 标记已联系。</p>
+  <p>按"人"为单位的总览。状态/标签/负责人可就地编辑；点 ✉ 联系会同时打开邮件客户端 + 标记已联系。点「跟进」格子可展开这个客户的全部跟进记录。</p>
 </div>
 
 <div class="card admin-only hidden" id="hydrateCard" style="background:var(--grad-soft); border:1px solid var(--accent-soft); padding:14px 18px;">
@@ -85,6 +85,9 @@
     </label>
     <label class="filter-label">排序
       <select id="orderSel" onchange="reloadFiltered()">
+        <option value="followup" selected>跟进时间（新→旧）</option>
+        <option value="followup_asc">跟进时间（旧→新）</option>
+        <option value="status_changed">进入状态时间（新→旧）</option>
         <option value="last_contacted">最近联系</option>
         <option value="followers">粉丝数（高→低）</option>
         <option value="updated">最近更新</option>
@@ -316,6 +319,28 @@ function relTime(ts) {
   return Math.floor(d/86400/365) + ' 年前';
 }
 
+// 跟进/状态时间要"几点几分"看得清，不用"3 天前"。
+function fmtShortTime(ts) {
+  if (!ts) return '';
+  const d = new Date(ts * 1000);
+  const now = new Date();
+  const hm = d.toLocaleTimeString('zh-CN', {hour: '2-digit', minute: '2-digit', hour12: false});
+  const md = `${d.getMonth() + 1}/${d.getDate()}`;
+  return d.getFullYear() === now.getFullYear() ? `${md} ${hm}` : `${d.getFullYear()}/${md} ${hm}`;
+}
+
+function fmtFullTime(ts) {
+  if (!ts) return '';
+  return new Date(ts * 1000).toLocaleString('zh-CN', {hour12: false});
+}
+
+function statusVerb(status) {
+  return {
+    '已联系': '联系于', '已回复': '回复于', '已成交': '成交于',
+    '不适合': '标记于', '已放弃': '放弃于', '主动来找': '来访于',
+  }[status] || '变更于';
+}
+
 function buildMailto(p) {
   if (!p.email) return null;
   const name = p.full_name || '';
@@ -328,7 +353,7 @@ function buildMailto(p) {
 // scroll position across loadList() reloads (which happen after every edit:
 // reject / status change / email fill / etc). Without this, every click on
 // a row's action button reloads the table from scratch, the row's position
-// may shift (especially with the default last_contacted DESC sort), and the
+// may shift (especially with the default follow-up DESC sort), and the
 // reviewer has to manually find where they were.
 let _activeRowPid = null;
 
@@ -354,7 +379,9 @@ async function loadList() {
   const prevScrollTop = wrap ? wrap.scrollTop : 0;
   const prevWindowY = window.scrollY;
 
-  document.getElementById('peopleList').innerHTML = skeletonTable(13, 8, [32,140,200,200,80,110,110,130,140,90,90,200,168]);
+  // 14 columns: 勾选/姓名/邮箱/账号/粉丝/状态/跟进/合作强度/标签/负责人/最近联系/入库/备注/操作
+  document.getElementById('peopleList').innerHTML =
+    skeletonTable(14, 8, [32,140,200,200,80,110,230,110,130,140,90,90,200,168]);
   try {
     const r = await fetch('/api/people/list?' + params.toString());
     const d = await r.json();
@@ -501,7 +528,8 @@ function renderTable(people) {
           <th style="min-width:160px;">邮箱</th>
           <th style="min-width:165px;">关联账号</th>
           <th style="min-width:72px;">粉丝</th>
-          <th style="min-width:104px;">状态</th>
+          <th style="min-width:112px;" title="下拉框下方的小字＝什么时候进入当前状态（已回复＝客户回复时间）。状态变更日志 2026-11-04 起才有，更早的客户不显示。">状态</th>
+          <th style="min-width:230px;" title="最近一次跟进的时间、内容和总条数。点这一格展开这个客户的全部跟进记录（新的在前）。">跟进</th>
           <th style="min-width:104px;">合作强度</th>
           <th style="min-width:100px;">标签</th>
           ${ownerHeader}
@@ -630,6 +658,11 @@ function renderRow(p) {
   const rejectedRowStyle = isRejected
     ? ' style="background: var(--red-light);"'
     : '';
+  // 状态格子：下拉框下面补一行"什么时候进入这个状态"（已回复=客户回复时间）。
+  // 状态变更日志 2026-11 起才有，历史客户没有记录就整行不渲染。
+  const statusWhen = p.status_changed_at
+    ? `<div class="status-time" title="进入「${escapeHtml(p.status || '')}」的时间">${statusVerb(p.status)} ${fmtShortTime(p.status_changed_at)}</div>`
+    : '';
   return `
     <tr data-pid="${p.id}"${rejectedRowStyle}>
       <td><input type="checkbox" class="row-cb" data-pid="${p.id}" onclick="toggleRow(${p.id}, this.checked)"></td>
@@ -637,7 +670,8 @@ function renderRow(p) {
       <td>${emailCell}</td>
       <td><div class="handles">${handles}<button class="btn-handles" onclick="openHandlesDrawer(${p.id})" title="管理这个客户的平台账号">${(p.handles && p.handles.length) ? '编辑' : '+ 添加'}</button></div></td>
       <td><span style="font-size:12px; color:var(--text); font-weight:600;">${p.max_followers != null ? fmt(p.max_followers) : '<span style="color:var(--text2); font-weight:400;">—</span>'}</span></td>
-      <td><select onchange="onChange(${p.id}, 'status', this)">${statusOpts}</select></td>
+      <td><select onchange="onChange(${p.id}, 'status', this)">${statusOpts}</select>${statusWhen}</td>
+      <td class="fu-td">${renderFollowupCell(p)}</td>
       <td><select onchange="onChange(${p.id}, 'intent', this)">${intentOptionsHtml(p.intent)}</select></td>
       <td><input type="text" class="tags-input" value="${escapeHtml(tagsStr)}" placeholder="逗号分隔" onblur="onChange(${p.id}, 'tags', this)"></td>
       <td>${ownerCell}</td>
@@ -646,6 +680,108 @@ function renderRow(p) {
       <td><input type="text" class="notes-input" value="${escapeHtml(p.notes || '')}" placeholder="点此添加备注" onblur="onChange(${p.id}, 'notes', this)"></td>
       <td class="action-col"><div style="display:flex; gap:6px; align-items:center; flex-wrap:nowrap;">${contactBtn}${hydrateBtn}${rejectBtn}</div></td>
     </tr>`;
+}
+
+// -------- 列表里的跟进格子 --------
+// 收起状态：最近跟进时间 + 条数 + 最近一条内容（两行截断）+ 首次跟进时间。
+// 点一下在行下面展开这个客户的全部跟进（时间、人、内容，新的在前）。
+const FU_DETAIL_COLS = 14;
+
+function renderFollowupCell(p) {
+  const n = p.followup_count || 0;
+  if (!n) {
+    // 已经接触/回复过的客户没有跟进记录，要显眼地提示，而不是一个灰破折号。
+    const shouldHave = ['已联系', '已回复', '已成交', '主动来找'].includes(p.status);
+    return shouldHave
+      ? '<span class="fu-none" title="这个客户已经进入沟通阶段，但还没有任何跟进记录">未跟进</span>'
+      : '<span class="never">—</span>';
+  }
+  const snippet = (p.last_followup_content || '').trim();
+  const actor = p.last_followup_actor ? `${escapeHtml(p.last_followup_actor)}：` : '';
+  return `
+    <div class="fu-cell" onclick="toggleFollowups(${p.id}, this.querySelector('.fu-head'))"
+         title="点开查看全部 ${n} 条跟进">
+      <div class="fu-head">
+        <span class="fu-when" title="${escapeHtml(fmtFullTime(p.last_followup_at))}">${fmtShortTime(p.last_followup_at)}</span>
+        <span class="fu-count">${n} 条</span>
+        <span class="fu-caret">▾</span>
+      </div>
+      <div class="fu-snippet" title="${escapeHtml(snippet)}">${actor}${escapeHtml(snippet)}</div>
+      ${n > 1 ? `<div class="fu-sub">首次 ${fmtShortTime(p.first_followup_at)}</div>` : ''}
+    </div>`;
+}
+
+// 展开面板里每个客户的跟进原始数据（搜索/排序只重画列表，不重画工具条，
+// 否则输入框会丢焦点）。
+const _fuItemsByPid = new Map();
+
+async function toggleFollowups(pid, btn) {
+  const existing = document.getElementById(`fuRow-${pid}`);
+  if (existing) {
+    existing.remove();
+    btn.classList.remove('is-open');
+    _fuItemsByPid.delete(pid);
+    return;
+  }
+  const tr = btn.closest('tr');
+  if (!tr) return;
+  btn.classList.add('is-open');
+  const detail = document.createElement('tr');
+  detail.className = 'fu-detail-row';
+  detail.id = `fuRow-${pid}`;
+  detail.innerHTML = `<td colspan="${FU_DETAIL_COLS}"><div class="fu-detail">
+      <span class="spinner" style="display:inline-block;vertical-align:-2px;margin-right:6px;"></span>正在加载跟进记录…
+    </div></td>`;
+  tr.after(detail);
+  try {
+    const r = await fetch(`/api/people/${pid}/followups`);
+    const d = await r.json();
+    _fuItemsByPid.set(pid, d.followups || []);
+    renderExpandedFollowups(pid);
+  } catch (e) {
+    detail.querySelector('.fu-detail').innerHTML =
+      `<span style="color:var(--red)">加载失败：${escapeHtml(e.message)}</span>`;
+  }
+}
+
+function renderExpandedFollowups(pid) {
+  const detail = document.getElementById(`fuRow-${pid}`);
+  if (!detail) return;
+  const all = _fuItemsByPid.get(pid) || [];
+  const box = detail.querySelector('.fu-detail');
+  if (!all.length) {
+    box.innerHTML = `<div class="fu-detail-head">跟进记录</div>
+      <div class="empty" style="padding:10px 0; color:var(--text2);">还没有跟进记录</div>`;
+    return;
+  }
+  let searchEl = box.querySelector('.fu-search');
+  let sortEl = box.querySelector('.fu-sort');
+  if (!searchEl) {
+    box.innerHTML = `
+      <div class="fu-detail-head">全部跟进 <span class="fu-count">${all.length} 条</span>
+        <span class="fu-detail-hint">再点上面的时间收起</span></div>
+      <div class="fu-toolbar">
+        <input type="text" class="fu-search" placeholder="搜索跟进内容 / 记录人 / 日期"
+               oninput="renderExpandedFollowups(${pid})">
+        <select class="fu-sort" onchange="renderExpandedFollowups(${pid})">
+          <option value="desc"${_fuSortPref === 'desc' ? ' selected' : ''}>时间 新→旧</option>
+          <option value="asc"${_fuSortPref === 'asc' ? ' selected' : ''}>时间 旧→新</option>
+        </select>
+      </div>
+      <div class="fu-timeline fu-items"></div>`;
+    searchEl = box.querySelector('.fu-search');
+    sortEl = box.querySelector('.fu-sort');
+  }
+  _fuSortPref = sortEl.value;
+  const shown = filterAndSortFollowups(all, searchEl.value, _fuSortPref);
+  const cnt = box.querySelector('.fu-count');
+  if (cnt) {
+    cnt.textContent = searchEl.value.trim()
+      ? `匹配 ${shown.length}/${all.length} 条` : `${all.length} 条`;
+  }
+  box.querySelector('.fu-items').innerHTML = shown.length
+    ? followupTimelineHtml(shown, false)
+    : '<div class="empty" style="padding:8px 0; color:var(--text2);">没有匹配的跟进记录</div>';
 }
 
 async function onReject(pid) {
@@ -887,6 +1023,14 @@ async function renderHandlesDrawer() {
                style="flex:1;" onkeydown="if(event.key==='Enter') onAddFollowup()">
         <button class="btn btn-accent btn-sm" onclick="onAddFollowup(this)">＋ 添加</button>
       </div>
+      <div class="fu-toolbar" style="margin-bottom:8px;">
+        <input type="text" id="drawerFuSearch" placeholder="搜索跟进内容 / 记录人 / 日期"
+               oninput="renderDrawerFollowups()">
+        <select id="drawerFuSort" onchange="renderDrawerFollowups()">
+          <option value="desc">时间 新→旧</option>
+          <option value="asc">时间 旧→新</option>
+        </select>
+      </div>
       <div id="followupList" style="max-height:240px; overflow-y:auto;"></div>
     </div>
 
@@ -1045,34 +1189,80 @@ async function mergeFromConflict(sourceId) {
 }
 
 // -------- Follow-up timeline (per-customer) --------
+// 抽屉和列表展开面板共用：搜索（内容 / 记录人 / 日期）+ 按时间正序或倒序。
+// 排序偏好存在 _fuSortPref 里，换客户/换面板时沿用上一次的选择。
+let _fuSortPref = 'desc';
+let _drawerFuItems = [];
+
+function followupMatches(it, needle) {
+  if (!needle) return true;
+  const who = it.actor_display_name || it.actor_username || '';
+  // 日期也进搜索范围，方便"9月14"或"2026/9"这种查法。
+  const hay = `${it.content || ''} ${who} ${fmtFullTime(it.created_at)} ${fmtShortTime(it.created_at)}`;
+  return hay.toLowerCase().includes(needle);
+}
+
+function filterAndSortFollowups(items, query, dir) {
+  const needle = (query || '').trim().toLowerCase();
+  const shown = (items || []).filter(it => followupMatches(it, needle));
+  shown.sort((a, b) => dir === 'asc' ? a.created_at - b.created_at : b.created_at - a.created_at);
+  return shown;
+}
+
+function followupTimelineHtml(items, withDelete) {
+  return items.map(it => {
+    const who = it.actor_display_name || it.actor_username || '?';
+    const del = withDelete
+      ? `<button class="tl-del" onclick="onDeleteFollowup(${it.id})" title="删除这条记录">删除</button>`
+      : '';
+    return `<div class="tl-item">
+      <div class="tl-meta">
+        <span>${escapeHtml(who)}</span><span>·</span><span>${escapeHtml(fmtFullTime(it.created_at))}</span>
+        ${del}
+      </div>
+      <div class="tl-text">${escapeHtml(it.content)}</div>
+    </div>`;
+  }).join('');
+}
+
 async function loadFollowups() {
   const pid = _handlesDrawerPid;
   if (pid == null) return;
   const listEl = document.getElementById('followupList');
   if (!listEl) return;
+  const sortSel = document.getElementById('drawerFuSort');
+  if (sortSel) sortSel.value = _fuSortPref;
   try {
     const r = await fetch(`/api/people/${pid}/followups`);
     const d = await r.json();
-    const items = d.followups || [];
-    document.getElementById('followupCount').textContent =
-      items.length ? `共 ${items.length} 条` : '';
-    if (!items.length) {
-      listEl.innerHTML = '<div class="empty" style="padding:10px 0; color:var(--text2);">还没有跟进记录</div>';
-      return;
-    }
-    listEl.innerHTML = items.map(it => {
-      const who = it.actor_display_name || it.actor_username || '?';
-      const when = new Date(it.created_at * 1000).toLocaleString('zh-CN', {hour12: false});
-      return `<div class="tl-item">
-        <div class="tl-meta">
-          <span>${escapeHtml(who)}</span><span>·</span><span>${escapeHtml(when)}</span>
-          <button class="tl-del" onclick="onDeleteFollowup(${it.id})" title="删除这条记录">删除</button>
-        </div>
-        <div class="tl-text">${escapeHtml(it.content)}</div>
-      </div>`;
-    }).join('');
+    _drawerFuItems = d.followups || [];
+    renderDrawerFollowups();
   } catch (e) {
     listEl.innerHTML = `<div style="color:var(--red); font-size:11px;">加载失败：${escapeHtml(e.message)}</div>`;
+  }
+}
+
+// Only repaints the list (never the toolbar), so typing keeps focus/caret.
+function renderDrawerFollowups() {
+  const listEl = document.getElementById('followupList');
+  if (!listEl) return;
+  const searchEl = document.getElementById('drawerFuSearch');
+  const sortEl = document.getElementById('drawerFuSort');
+  if (sortEl) _fuSortPref = sortEl.value;
+  const q = searchEl ? searchEl.value : '';
+  const all = _drawerFuItems || [];
+  const shown = filterAndSortFollowups(all, q, _fuSortPref);
+  const cnt = document.getElementById('followupCount');
+  if (cnt) {
+    cnt.textContent = !all.length ? ''
+      : (q.trim() ? `匹配 ${shown.length}/${all.length} 条` : `共 ${all.length} 条`);
+  }
+  if (!all.length) {
+    listEl.innerHTML = '<div class="empty" style="padding:10px 0; color:var(--text2);">还没有跟进记录</div>';
+  } else if (!shown.length) {
+    listEl.innerHTML = '<div class="empty" style="padding:10px 0; color:var(--text2);">没有匹配的跟进记录</div>';
+  } else {
+    listEl.innerHTML = followupTimelineHtml(shown, true);
   }
 }
 

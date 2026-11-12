@@ -1156,6 +1156,32 @@ def _people_where(
     return " AND ".join(where), args
 
 
+def _people_order_join(order: str) -> str:
+    """Extra LEFT JOINs an ORDER BY needs when it reads an aggregate table.
+
+    `followup` / `followup_asc` order by the follow-up log timestamps;
+    `status_changed` orders by when the customer entered its *current* status.
+    Both aggregates are tiny (415 rows / a few dozen rows today), so joining
+    them into 54k-row lists stays in the low milliseconds.
+    """
+    parts = []
+    if order in ("followup", "followup_asc"):
+        parts.append(
+            " LEFT JOIN (SELECT person_id, MIN(created_at) AS first_at,"
+            " MAX(created_at) AS last_at, COUNT(*) AS n"
+            " FROM followup_logs GROUP BY person_id) fu ON fu.person_id = p.id"
+        )
+    if order == "status_changed":
+        parts.append(
+            " LEFT JOIN (SELECT person_id, new_status, MAX(created_at) AS at"
+            " FROM status_events"
+            " WHERE old_status IS NULL OR old_status != new_status"
+            " GROUP BY person_id, new_status) se"
+            " ON se.person_id = p.id AND se.new_status = p.status"
+        )
+    return "".join(parts)
+
+
 def _people_order_sql(order: str) -> str:
     """Shared ORDER BY for the people list queries (identical in both paths,
     so 'select all matching' returns the same rows in the same order)."""
@@ -1169,7 +1195,42 @@ def _people_order_sql(order: str) -> str:
         "created_asc":    "p.id ASC",
         "name":           "p.full_name COLLATE NOCASE ASC",
         "followers":      "agg.max_followers DESC, p.updated_at DESC",
+        # 按最近一次跟进（没有跟进的沉底，同组内仍看最近更新）。
+        "followup":       "COALESCE(fu.last_at, 0) DESC, p.updated_at DESC",
+        # 最早一次跟进在前：用来捞"跟过一次就再也没动静"的客户。
+        "followup_asc":   "CASE WHEN fu.last_at IS NULL THEN 1 ELSE 0 END,"
+                          " fu.last_at ASC, p.updated_at DESC",
+        # 按进入当前状态的时间（状态变更日志 2026-11 起才有记录）。
+        "status_changed": "COALESCE(se.at, 0) DESC, p.updated_at DESC",
     }.get(order, "p.last_contacted_at DESC, p.updated_at DESC")
+
+
+def _latest_followups(c: sqlite3.Connection, person_ids: list[int]) -> dict[int, dict]:
+    """The newest follow-up (content + author) for each of `person_ids`.
+
+    Used by every list row's 跟进 cell. Chunked like the other IN(...) queries
+    so a 43k-row "select all matching" can never blow the variable limit.
+    """
+    out: dict[int, dict] = {}
+    for start in range(0, len(person_ids), _IN_CHUNK):
+        chunk = person_ids[start:start + _IN_CHUNK]
+        if not chunk:
+            continue
+        placeholders = ",".join("?" * len(chunk))
+        rows = c.execute(
+            f"""SELECT f.person_id, f.content,
+                       COALESCE(u.display_name, u.username) AS actor
+                  FROM followup_logs f
+                  LEFT JOIN users u ON u.id = f.actor_id
+                 WHERE f.person_id IN ({placeholders})
+                 ORDER BY f.created_at DESC, f.id DESC""",
+            chunk,
+        ).fetchall()
+        for r in rows:
+            # First row per person is the newest one.
+            if r["person_id"] not in out:
+                out[r["person_id"]] = {"content": r["content"], "actor": r["actor"]}
+    return out
 
 
 def list_people(
@@ -1200,6 +1261,18 @@ def list_people(
     total = c.execute(f"SELECT COUNT(*) FROM people p WHERE {where_sql}", args).fetchone()[0]
 
     order_sql = _people_order_sql(order)
+    # Always joined (not just when ordering by them): the list cell needs the
+    # follow-up count / first / last timestamps and the status-entry time.
+    followup_status_join = (
+        " LEFT JOIN (SELECT person_id, MIN(created_at) AS first_at,"
+        " MAX(created_at) AS last_at, COUNT(*) AS n"
+        " FROM followup_logs GROUP BY person_id) fu ON fu.person_id = p.id"
+        " LEFT JOIN (SELECT person_id, new_status, MAX(created_at) AS at"
+        " FROM status_events"
+        " WHERE old_status IS NULL OR old_status != new_status"
+        " GROUP BY person_id, new_status) se"
+        " ON se.person_id = p.id AND se.new_status = p.status"
+    )
 
     # Two-phase query: first get the paginated people, then aggregate only for those IDs.
     # This avoids scanning the entire platform_accounts table on every page load.
@@ -1214,7 +1287,11 @@ def list_people(
                    u.username AS assigned_username, u.display_name AS assigned_display_name,
                    agg.handles_blob,
                    COALESCE(agg.account_count, 0) AS account_count,
-                   agg.max_followers
+                   agg.max_followers,
+                   COALESCE(fu.n, 0) AS followup_count,
+                   fu.first_at AS first_followup_at,
+                   fu.last_at AS last_followup_at,
+                   se.at AS status_changed_at
               FROM people p
               LEFT JOIN users u ON u.id = p.assigned_user_id
               LEFT JOIN (
@@ -1225,6 +1302,7 @@ def list_people(
                     FROM platform_accounts
                    GROUP BY person_id
               ) agg ON agg.person_id = p.id
+              {followup_status_join}
              WHERE {where_sql}
              ORDER BY {order_sql}
              LIMIT ? OFFSET ?
@@ -1238,9 +1316,14 @@ def list_people(
             SELECT p.id, p.email, p.full_name, p.status, p.tags, p.notes, p.owner,
                    p.assigned_user_id, p.previous_status, p.intent,
                    p.last_contacted_at, p.created_at, p.updated_at,
-                   u.username AS assigned_username, u.display_name AS assigned_display_name
+                   u.username AS assigned_username, u.display_name AS assigned_display_name,
+                   COALESCE(fu.n, 0) AS followup_count,
+                   fu.first_at AS first_followup_at,
+                   fu.last_at AS last_followup_at,
+                   se.at AS status_changed_at
               FROM people p
               LEFT JOIN users u ON u.id = p.assigned_user_id
+              {followup_status_join}
              WHERE {where_sql}
              ORDER BY {order_sql}
              LIMIT ? OFFSET ?
@@ -1288,6 +1371,12 @@ def list_people(
             d["max_followers"] = agg.get("max_followers")
             rows.append(d)
 
+    # Newest follow-up text per person, for the list's 跟进 cell. One query per
+    # page (all logs of the page's people, newest first); the whole table is
+    # under 1k rows today, so this is cheaper than one correlated subquery per
+    # person.
+    latest_fu = _latest_followups(c, [r["id"] for r in rows])
+
     out: list[dict] = []
     for r in rows:
         d = dict(r)
@@ -1295,6 +1384,9 @@ def list_people(
             d["tags"] = json.loads(d.get("tags") or "[]")
         except Exception:
             d["tags"] = []
+        fu = latest_fu.get(d["id"]) or {}
+        d["last_followup_content"] = fu.get("content")
+        d["last_followup_actor"] = fu.get("actor")
         handles_blob = d.pop("handles_blob") or ""
         # GROUP_CONCAT has no ORDER BY, so the concatenation order follows
         # whichever index the planner happens to pick — the chip order in the
@@ -1343,6 +1435,7 @@ def list_people_brief(
     )
     total = c.execute(f"SELECT COUNT(*) FROM people p WHERE {where_sql}", args).fetchone()[0]
     order_sql = _people_order_sql(order)
+    order_join = _people_order_join(order)
 
     if order == "followers":
         # Same join shape as list_people: ORDER BY needs the aggregate.
@@ -1353,6 +1446,7 @@ def list_people_brief(
                       SELECT person_id, MAX(follower_count) AS max_followers
                         FROM platform_accounts GROUP BY person_id
                   ) agg ON agg.person_id = p.id
+                  {order_join}
                  WHERE {where_sql}
                  ORDER BY {order_sql}
                  LIMIT ? OFFSET ?""",
@@ -1362,6 +1456,7 @@ def list_people_brief(
         rows = c.execute(
             f"""SELECT p.id, p.email, p.full_name
                   FROM people p
+                  {order_join}
                  WHERE {where_sql}
                  ORDER BY {order_sql}
                  LIMIT ? OFFSET ?""",
@@ -1399,6 +1494,7 @@ def match_person_ids(
     )
     total = c.execute(f"SELECT COUNT(*) FROM people p WHERE {where_sql}", args).fetchone()[0]
     order_sql = _people_order_sql(order)
+    order_join = _people_order_join(order)
     # ORDER BY followers needs the aggregate in scope.
     if order == "followers":
         from_sql = (
@@ -1406,9 +1502,10 @@ def match_person_ids(
             "  SELECT person_id, MAX(follower_count) AS max_followers"
             "    FROM platform_accounts GROUP BY person_id"
             ") agg ON agg.person_id = p.id"
+            + order_join
         )
     else:
-        from_sql = "people p"
+        from_sql = "people p" + order_join
 
     email_cond = "p.email IS NOT NULL AND p.email != ''"
     ids = [r[0] for r in c.execute(
